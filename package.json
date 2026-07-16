@@ -1,0 +1,17 @@
+{
+  "name": "kesula-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Kesula Charitable Trust",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "nodemailer": "^9.0.3",
+    "razorpay": "^2.9.8"
+  }
+}
