@@ -16,6 +16,11 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET || 'rzp_secret_placeholder',
 });
 
+// Lightweight endpoint to wake up the Render server from sleep
+app.get('/api/ping', (req, res) => {
+  res.status(200).json({ status: 'awake' });
+});
+
 // Endpoint to create a Razorpay order
 app.post('/api/create-order', async (req, res) => {
   try {
