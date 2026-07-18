@@ -40,7 +40,9 @@ export const verifyPayment = async (req, res, next) => {
       }
 
       if (email && name) {
-        await sendPaymentSuccessEmail(email, name, amount);
+        sendPaymentSuccessEmail(email, name, amount).catch(err => {
+          console.error("Background payment success email sending error:", err);
+        });
       }
       res.json({ success: true, message: 'Payment verified successfully' });
     } else {

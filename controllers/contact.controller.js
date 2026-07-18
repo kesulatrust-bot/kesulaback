@@ -9,8 +9,10 @@ export const submitContact = async (req, res, next) => {
     const { error } = await supabase.from('contact_messages').insert([{ name, email, phone, subject, message }]);
     if (error) throw new Error(error.message);
 
-    // Send Email
-    await sendEnquiryEmail(email, name, { subject, message, phone });
+    // Send Email in background (non-blocking)
+    sendEnquiryEmail(email, name, { subject, message, phone }).catch(err => {
+      console.error("Background email sending error:", err);
+    });
     
     res.json({ success: true });
   } catch (error) {

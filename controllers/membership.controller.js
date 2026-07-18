@@ -9,8 +9,10 @@ export const submitMembership = async (req, res, next) => {
     const { error } = await supabase.from('members').insert([{ fullName, email, phone, address, interestArea, message, status: 'pending' }]);
     if (error) throw new Error(error.message);
 
-    // Send Email
-    await sendMemberWelcomeEmail(email, fullName, { interestArea, message });
+    // Send Email in background (non-blocking)
+    sendMemberWelcomeEmail(email, fullName, { interestArea, message }).catch(err => {
+      console.error("Background welcome email sending error:", err);
+    });
     
     res.json({ success: true });
   } catch (error) {
