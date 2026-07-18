@@ -1,150 +1,75 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import Razorpay from 'razorpay';
-import crypto from 'crypto';
-import { sendPaymentSuccessEmail, sendMemberWelcomeEmail, sendMemberActiveEmail } from './mailer.js';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import { generalApiLimiter } from './middleware/rateLimit.middleware.js';
+import { errorHandler } from './middleware/error.middleware.js';
+import paymentRoutes from './routes/payment.routes.js';
+import contactRoutes from './routes/contact.routes.js';
+import membershipRoutes from './routes/membership.routes.js';
 
 dotenv.config();
 
+// Environment Validation
+const requiredEnvVars = [
+  'RAZORPAY_KEY_ID',
+  'RAZORPAY_KEY_SECRET',
+  'SMTP_HOST',
+  'SMTP_USER',
+  'SMTP_PASS',
+  'VITE_SUPABASE_URL',
+  'VITE_SUPABASE_ANON_KEY'
+];
+
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar] && process.env.NODE_ENV === 'production') {
+    console.error(`[FATAL] Missing required environment variable in production: ${envVar}`);
+    process.exit(1);
+  }
+}
+
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || 'rzp_secret_placeholder',
-});
+// Security & Middleware
+app.use(helmet()); 
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ limit: '1mb', extended: true }));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// Lightweight endpoint to wake up the Render server from sleep
-app.get('/api/ping', (req, res) => {
-  res.status(200).json({ status: 'awake' });
-});
-
-// Endpoint to create a Razorpay order
-app.post('/api/create-order', async (req, res) => {
-  try {
-    const { amount, receipt } = req.body;
-    
-    if (!amount) {
-      return res.status(400).json({ error: 'Amount is required' });
-    }
-
-    const options = {
-      amount: amount * 100, // amount in smallest currency unit (paise)
-      currency: 'INR',
-      receipt: receipt || `rcpt_${Date.now()}`
-    };
-
-    const order = await razorpay.orders.create(options);
-    res.json({ ...order, key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder' });
-  } catch (error) {
-    console.error('Error creating order:', error);
-    res.status(500).json({ error: 'Failed to create order' });
-  }
-});
-
-// Endpoint to verify payment
-app.post('/api/verify-payment', async (req, res) => {
-  try {
-    const { 
-      razorpay_order_id, 
-      razorpay_payment_id, 
-      razorpay_signature,
-      email,
-      name,
-      amount
-    } = req.body;
-
-    const secret = process.env.RAZORPAY_KEY_SECRET || 'rzp_secret_placeholder';
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(body.toString())
-      .digest('hex');
-
-    const isAuthentic = expectedSignature === razorpay_signature;
-
-    if (isAuthentic) {
-      // Payment successful, send email
-      if (email && name) {
-        await sendPaymentSuccessEmail(email, name, amount);
-      }
-      res.json({ success: true, message: 'Payment verified successfully' });
+// Strict CORS
+const allowedOrigins = [
+  'https://kesulatrust.org',
+  'https://www.kesulatrust.org',
+  'http://localhost:5173'
+];
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
     } else {
-      res.status(400).json({ success: false, error: 'Invalid signature' });
+      callback(new Error('Not allowed by CORS'));
     }
-  } catch (error) {
-    console.error('Error verifying payment:', error);
-    res.status(500).json({ error: 'Failed to verify payment' });
   }
-});
+}));
 
-// Endpoint to send member welcome email
-app.post('/api/send-welcome-email', async (req, res) => {
-  try {
-    const { email, name, details } = req.body;
-    if (!email || !name) {
-      return res.status(400).json({ error: 'Email and name are required' });
-    }
-    
-    const { sendMemberWelcomeEmail } = await import('./mailer.js');
-    const sent = await sendMemberWelcomeEmail(email, name, details);
-    if (sent) {
-      res.json({ success: true });
-    } else {
-      res.status(500).json({ error: 'Failed to send email' });
-    }
-  } catch (error) {
-    console.error('Error sending welcome email:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+// Apply global rate limiter
+app.use('/api/', generalApiLimiter);
 
-// Endpoint to send member active email
-app.post('/api/send-active-email', async (req, res) => {
-  try {
-    const { email, name } = req.body;
-    if (!email || !name) {
-      return res.status(400).json({ error: 'Email and name are required' });
-    }
-    
-    const sent = await sendMemberActiveEmail(email, name);
-    if (sent) {
-      res.json({ success: true });
-    } else {
-      res.status(500).json({ error: 'Failed to send email' });
-    }
-  } catch (error) {
-    console.error('Error sending active email:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+// Health check
+app.get('/api/ping', (req, res) => res.status(200).json({ status: 'awake' }));
 
-// Endpoint to send enquiry email
-app.post('/api/send-enquiry-email', async (req, res) => {
-  try {
-    const { email, name, details } = req.body;
-    if (!email || !name) {
-      return res.status(400).json({ error: 'Email and name are required' });
-    }
-    
-    // Import dynamically or ensure it's imported at top. We will import at top.
-    const { sendEnquiryEmail } = await import('./mailer.js');
-    const sent = await sendEnquiryEmail(email, name, details);
-    if (sent) {
-      res.json({ success: true });
-    } else {
-      res.status(500).json({ error: 'Failed to send email' });
-    }
-  } catch (error) {
-    console.error('Error sending enquiry email:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+// Mount Routes
+app.use('/api', paymentRoutes);
+app.use('/api', contactRoutes);
+app.use('/api', membershipRoutes);
 
-const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
-  console.log(`Backend server running on port ${PORT}`);
-});
+// Centralized Error Middleware
+app.use(errorHandler);
+
+if (process.env.NODE_ENV !== 'test') {
+  const PORT = process.env.PORT || 5001;
+  app.listen(PORT, () => console.log(`Backend server running on port ${PORT}`));
+}
+
+export default app;
