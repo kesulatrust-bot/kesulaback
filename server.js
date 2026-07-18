@@ -41,11 +41,12 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 const allowedOrigins = [
   'https://kesulatrust.org',
   'https://www.kesulatrust.org',
+  'https://kesulatrust.netlify.app',
   'http://localhost:5173'
 ];
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.netlify.app')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
