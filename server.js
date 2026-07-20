@@ -1,15 +1,14 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import helmet from 'helmet';
 import morgan from 'morgan';
+
 import { generalApiLimiter } from './middleware/rateLimit.middleware.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import paymentRoutes from './routes/payment.routes.js';
 import contactRoutes from './routes/contact.routes.js';
 import membershipRoutes from './routes/membership.routes.js';
-
-dotenv.config();
 
 // Environment Validation
 const requiredEnvVars = [

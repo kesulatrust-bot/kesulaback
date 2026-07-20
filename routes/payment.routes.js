@@ -1,6 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
-import { createPaymentOrder, verifyPayment } from '../controllers/payment.controller.js';
+import { createPaymentOrder, verifyPayment, handleWebhook } from '../controllers/payment.controller.js';
 import { validateRequest } from '../middleware/validation.middleware.js';
 import { createOrderLimiter, verifyPaymentLimiter } from '../middleware/rateLimit.middleware.js';
 
@@ -22,5 +22,6 @@ const verifyPaymentSchema = z.object({
 
 router.post('/create-order', createOrderLimiter, validateRequest(createOrderSchema), createPaymentOrder);
 router.post('/verify-payment', verifyPaymentLimiter, validateRequest(verifyPaymentSchema), verifyPayment);
+router.post('/webhook', handleWebhook);
 
 export default router;
