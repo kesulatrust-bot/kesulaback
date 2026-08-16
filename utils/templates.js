@@ -94,7 +94,10 @@ export const memberActiveTemplate = (name, details = {}) => {
   const issuedDate = details.createdAt || details.created_at
     ? new Date(details.createdAt || details.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
     : new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  const photoUrl = details.photoUrl || details.photo_url || '';
+  const photoUrl = details.photoUrl || details.photo_url || details.photo || details.avatar_url || details.avatar || '';
+
+  const baseUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'https://www.kesulatrust.org';
+  const downloadUrl = `${baseUrl}/contact?memberId=${encodeURIComponent(details.id || memberId)}`;
 
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(`https://www.kesulatrust.org/verify-member?id=${memberId}&name=${encodeURIComponent(name)}`)}&color=8a3004`;
 
@@ -127,11 +130,15 @@ export const memberActiveTemplate = (name, details = {}) => {
         <!-- ID Card Content Body -->
         <div style="padding: 18px 16px;">
           <!-- Member Avatar / Photo -->
-          <div style="width: 100px; height: 125px; margin: 0 auto 10px; padding: 4px; background: linear-gradient(to top right, #fbbf24, #8a3004, #fde68a); border-radius: 16px;">
-            <div style="width: 100%; height: 100%; border-radius: 12px; background-color: white; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #8a3004; font-size: 44px;">
-              ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; object-fit: cover;" />` : '👤'}
-            </div>
-          </div>
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="width: 100px; height: 125px; margin: 0 auto 10px; padding: 4px; background: linear-gradient(to top right, #fbbf24, #8a3004, #fde68a); border-radius: 16px;">
+            <tr>
+              <td align="center" valign="middle" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; width: 100px; height: 125px;">
+                ${photoUrl 
+                  ? `<img src="${photoUrl}" alt="${name}" width="100" height="125" style="width: 100px; height: 125px; object-fit: cover; display: block; border-radius: 12px;" />` 
+                  : `<div style="font-size: 44px; line-height: 125px; color: #8a3004; text-align: center;">👤</div>`}
+              </td>
+            </tr>
+          </table>
 
           <div style="margin-bottom: 12px;">
             <h3 style="font-size: 18px; font-weight: 900; color: #0f172a; margin: 0; text-transform: uppercase;">${name}</h3>
@@ -177,7 +184,7 @@ export const memberActiveTemplate = (name, details = {}) => {
 
       <!-- Download / Print ID Card Action Button -->
       <div style="text-align: center; margin-top: 22px; margin-bottom: 12px;">
-        <a href="https://www.kesulatrust.org/contact?memberId=${encodeURIComponent(details.id || '')}" target="_blank" style="display: inline-block; padding: 14px 28px; background-color: #8a3004; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; border-radius: 12px; box-shadow: 0 4px 12px rgba(138,48,4,0.3);">
+        <a href="${downloadUrl}" target="_blank" style="display: inline-block; padding: 14px 28px; background-color: #8a3004; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; border-radius: 12px; box-shadow: 0 4px 12px rgba(138,48,4,0.3);">
           🖨️ Download / Print Official Digital ID Card
         </a>
       </div>
