@@ -12,33 +12,53 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Path to logo — lives in frontend/public/images (backend has no public folder)
-const LOGO_PATH = path.resolve(__dirname, '..', '..', 'frontend', 'public', 'images', 'logo.jpeg');
-const ALT_LOGO_PATH = path.resolve(__dirname, '..', 'public', 'images', 'logo.jpeg');
+// Path to logo — checked in backend/public/images then frontend/public/images
+const LOGO_PNG_BACKEND = path.resolve(__dirname, '..', 'public', 'images', 'logo.png');
+const LOGO_PNG_FRONTEND = path.resolve(__dirname, '..', '..', 'frontend', 'public', 'images', 'logo.png');
+const LOGO_WEBP_FRONTEND = path.resolve(__dirname, '..', '..', 'frontend', 'public', 'images', 'logo.webp');
 
 const getValidLogoPath = () => {
-  if (fs.existsSync(LOGO_PATH)) return LOGO_PATH;
-  if (fs.existsSync(ALT_LOGO_PATH)) return ALT_LOGO_PATH;
+  if (fs.existsSync(LOGO_PNG_BACKEND)) return LOGO_PNG_BACKEND;
+  if (fs.existsSync(LOGO_PNG_FRONTEND)) return LOGO_PNG_FRONTEND;
+  if (fs.existsSync(LOGO_WEBP_FRONTEND)) return LOGO_WEBP_FRONTEND;
   return null;
 };
 
-const port = Number(process.env.SMTP_PORT) || 587;
 const rawPass = process.env.SMTP_PASS || '';
 const cleanPass = rawPass.replace(/\s+/g, '').replace(/^"|"$/g, '');
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: port,
-  secure: port === 465, // true for 465, false for 587
-  family: 4, // Force IPv4 — prevents ENETUNREACH errors on Render (IPv6 not supported)
-  connectionTimeout: 10000, // 10s connection timeout
-  greetingTimeout: 5000,
-  socketTimeout: 15000,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: cleanPass,
-  },
-});
+const createGmailTransporter = () => {
+  const isGmail = !process.env.SMTP_HOST || process.env.SMTP_HOST.includes('gmail');
+  if (isGmail) {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.SMTP_USER || 'kesulatrust@gmail.com',
+        pass: cleanPass,
+      },
+      connectionTimeout: 20000,
+      greetingTimeout: 10000,
+      socketTimeout: 30000,
+    });
+  }
+
+  const port = Number(process.env.SMTP_PORT) || 587;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: port,
+    secure: port === 465,
+    family: 4,
+    connectionTimeout: 20000,
+    greetingTimeout: 10000,
+    socketTimeout: 30000,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: cleanPass,
+    },
+  });
+};
+
+const transporter = createGmailTransporter();
 
 const sendMail = async (to, subject, html) => {
   try {
@@ -89,9 +109,9 @@ export const sendMemberWelcomeEmail = async (email, name, details = {}) => {
   return true;
 };
 
-export const sendMemberActiveEmail = async (email, name) => {
-  const html = memberActiveTemplate(name);
-  return sendMail(email, 'Welcome to Kesula Charitable Trust!', html);
+export const sendMemberActiveEmail = async (email, name, details = {}) => {
+  const html = memberActiveTemplate(name, details);
+  return sendMail(email, 'Welcome to Kesula Charitable Trust - Official Member ID Card Included', html);
 };
 
 export const sendEnquiryEmail = async (email, name, details = {}) => {
