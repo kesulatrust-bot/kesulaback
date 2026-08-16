@@ -22,7 +22,9 @@ const getValidLogoPath = () => {
   return null;
 };
 
-const port = Number(process.env.SMTP_PORT) || 465;
+const port = Number(process.env.SMTP_PORT) || 587;
+const rawPass = process.env.SMTP_PASS || '';
+const cleanPass = rawPass.replace(/\s+/g, '').replace(/^"|"$/g, '');
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -34,7 +36,7 @@ const transporter = nodemailer.createTransport({
   socketTimeout: 15000,
   auth: {
     user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    pass: cleanPass,
   },
 });
 
