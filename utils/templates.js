@@ -175,7 +175,14 @@ export const memberActiveTemplate = (name, details = {}) => {
         </div>
       </div>
 
-      <p style="font-size: 13px; color: #64748b; text-align: center; margin-top: 20px;">Welcome aboard to our mission of empowering communities!</p>
+      <!-- Download / Print ID Card Action Button -->
+      <div style="text-align: center; margin-top: 22px; margin-bottom: 12px;">
+        <a href="https://www.kesulatrust.org/contact?memberId=${encodeURIComponent(details.id || '')}" target="_blank" style="display: inline-block; padding: 14px 28px; background-color: #8a3004; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; border-radius: 12px; box-shadow: 0 4px 12px rgba(138,48,4,0.3);">
+          🖨️ Download / Print Official Digital ID Card
+        </a>
+      </div>
+
+      <p style="font-size: 13px; color: #64748b; text-align: center; margin-top: 15px;">Welcome aboard to our mission of empowering communities!</p>
       <p style="font-size: 14px; color: #1e293b;">Warm regards,<br/><strong>Kesula Charitable Trust Team</strong></p>
     </div>
     <div style="${footerStyles}">
