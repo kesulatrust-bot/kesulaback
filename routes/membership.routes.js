@@ -1,6 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
-import { submitMembership } from '../controllers/membership.controller.js';
+import { submitMembership, approveMembership, sendWelcomeEmail } from '../controllers/membership.controller.js';
 import { validateRequest } from '../middleware/validation.middleware.js';
 import { emailMemberLimiter } from '../middleware/rateLimit.middleware.js';
 
@@ -16,5 +16,7 @@ const memberSubmitSchema = z.object({
 });
 
 router.post('/submit-member', emailMemberLimiter, validateRequest(memberSubmitSchema), submitMembership);
+router.post('/approve-member', approveMembership);
+router.post('/send-welcome-email', sendWelcomeEmail);
 
 export default router;
