@@ -37,3 +37,20 @@ export const approveMembership = async (req, res, next) => {
     next(error);
   }
 };
+
+export const sendWelcomeEmail = async (req, res, next) => {
+  try {
+    const { email, name, details } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    sendMemberWelcomeEmail(email, name || 'Applicant', details || {}).catch(err => {
+      console.error("Background welcome email sending error:", err);
+    });
+
+    res.json({ success: true, message: 'Welcome email triggered.' });
+  } catch (error) {
+    next(error);
+  }
+};
