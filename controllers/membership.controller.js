@@ -1,5 +1,5 @@
 import { supabase } from '../services/supabase.service.js';
-import { sendMemberWelcomeEmail } from '../services/email.service.js';
+import { sendMemberWelcomeEmail, sendMemberActiveEmail } from '../services/email.service.js';
 
 export const submitMembership = async (req, res, next) => {
   try {
@@ -15,6 +15,24 @@ export const submitMembership = async (req, res, next) => {
     });
     
     res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const approveMembership = async (req, res, next) => {
+  try {
+    const { email, name } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    // Non-blocking email send so API responds immediately (200 OK)
+    sendMemberActiveEmail(email, name || 'Valued Member').catch(err => {
+      console.error("Background active email sending error:", err);
+    });
+
+    res.json({ success: true, message: 'Approval notification sent.' });
   } catch (error) {
     next(error);
   }
