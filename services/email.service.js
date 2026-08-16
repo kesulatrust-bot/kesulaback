@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { paymentSuccessTemplate, memberWelcomeTemplate, memberActiveTemplate, adminNotificationTemplate } from '../utils/templates.js';
 import { enquiryReceivedTemplate } from '../utils/templates-enquiry.js';
@@ -12,13 +13,25 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Path to logo — lives in frontend/public/images (backend has no public folder)
-const LOGO_PATH = path.resolve(__dirname, '..', 'frontend', 'public', 'images', 'logo.jpeg');
+const LOGO_PATH = path.resolve(__dirname, '..', '..', 'frontend', 'public', 'images', 'logo.jpeg');
+const ALT_LOGO_PATH = path.resolve(__dirname, '..', 'public', 'images', 'logo.jpeg');
+
+const getValidLogoPath = () => {
+  if (fs.existsSync(LOGO_PATH)) return LOGO_PATH;
+  if (fs.existsSync(ALT_LOGO_PATH)) return ALT_LOGO_PATH;
+  return null;
+};
+
+const port = Number(process.env.SMTP_PORT) || 465;
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: Number(process.env.SMTP_PORT) || 465,
-  secure: Number(process.env.SMTP_PORT) === 465 || !process.env.SMTP_PORT, // true for 465, false for 587
+  port: port,
+  secure: port === 465, // true for 465, false for 587
   family: 4, // Force IPv4 — prevents ENETUNREACH errors on Render (IPv6 not supported)
+  connectionTimeout: 10000, // 10s connection timeout
+  greetingTimeout: 5000,
+  socketTimeout: 15000,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -27,23 +40,29 @@ const transporter = nodemailer.createTransport({
 
 const sendMail = async (to, subject, html) => {
   try {
-    const info = await transporter.sendMail({
-      from: `Kesula Charitable Trust <${process.env.MAIL_FROM_ADDRESS}>`,
+    const validLogo = getValidLogoPath();
+    const mailOptions = {
+      from: `Kesula Charitable Trust <${process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER}>`,
       to,
       subject,
       html,
-      attachments: [
+    };
+
+    if (validLogo) {
+      mailOptions.attachments = [
         {
           filename: 'logo.jpeg',
-          path: LOGO_PATH,
-          cid: 'logo' // same cid value as in the html img src
+          path: validLogo,
+          cid: 'logo'
         }
-      ]
-    });
-    console.log('Message sent: %s', info.messageId);
+      ];
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Message sent successfully: %s', info.messageId);
     return true;
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error(`❌ Error sending email to ${to}:`, error.message);
     return false;
   }
 };
