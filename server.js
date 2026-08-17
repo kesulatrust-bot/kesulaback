@@ -41,14 +41,15 @@ const allowedOrigins = [
   'https://kesulatrust.org',
   'https://www.kesulatrust.org',
   'https://kesulatrust.netlify.app',
+  'https://testing6.techyarts.com',
   'http://localhost:5173'
 ];
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.netlify.app')) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.netlify.app') || origin.endsWith('.techyarts.com')) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(null, true);
     }
   }
 }));

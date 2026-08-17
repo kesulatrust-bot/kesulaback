@@ -27,44 +27,33 @@ const getValidLogoPath = () => {
 const rawPass = process.env.SMTP_PASS || '';
 const cleanPass = rawPass.replace(/\s+/g, '').replace(/^"|"$/g, '');
 
-const createGmailTransporter = () => {
-  const isGmail = !process.env.SMTP_HOST || process.env.SMTP_HOST.includes('gmail');
-  if (isGmail) {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.SMTP_USER || 'kesulatrust@gmail.com',
-        pass: cleanPass,
-      },
-      connectionTimeout: 20000,
-      greetingTimeout: 10000,
-      socketTimeout: 30000,
-    });
-  }
+const getTransporter = (options = {}) => {
+  const port = options.port || Number(process.env.SMTP_PORT) || 465;
+  const isSecure = port === 465;
 
-  const port = Number(process.env.SMTP_PORT) || 587;
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: port,
-    secure: port === 465,
-    family: 4,
-    connectionTimeout: 20000,
-    greetingTimeout: 10000,
-    socketTimeout: 30000,
+    secure: isSecure,
+    family: 4, // Force IPv4 to prevent ENETUNREACH errors on cloud platforms like Render
     auth: {
-      user: process.env.SMTP_USER,
+      user: process.env.SMTP_USER || 'kesulatrust@gmail.com',
       pass: cleanPass,
     },
+    tls: {
+      rejectUnauthorized: false
+    },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
   });
 };
-
-const transporter = createGmailTransporter();
 
 const sendMail = async (to, subject, html) => {
   try {
     const validLogo = getValidLogoPath();
     const mailOptions = {
-      from: `Kesula Charitable Trust <${process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER}>`,
+      from: `Kesula Charitable Trust <${process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER || 'kesulatrust@gmail.com'}>`,
       to,
       subject,
       html,
@@ -80,9 +69,21 @@ const sendMail = async (to, subject, html) => {
       ];
     }
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Message sent successfully: %s', info.messageId);
-    return true;
+    // Try Port 465 (Direct SSL) first
+    try {
+      const transporter465 = getTransporter({ port: 465 });
+      const info = await transporter465.sendMail(mailOptions);
+      console.log('✅ Email sent successfully to %s (Port 465): %s', to, info.messageId);
+      return true;
+    } catch (err465) {
+      console.warn(`⚠️ Port 465 send failed for ${to} (${err465.message}). Retrying via Port 587...`);
+      
+      // Fallback: Port 587 (STARTTLS)
+      const transporter587 = getTransporter({ port: 587 });
+      const info587 = await transporter587.sendMail(mailOptions);
+      console.log('✅ Email sent successfully to %s (Port 587 fallback): %s', to, info587.messageId);
+      return true;
+    }
   } catch (error) {
     console.error(`❌ Error sending email to ${to}:`, error.message);
     return false;
