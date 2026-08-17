@@ -22,18 +22,28 @@ export const submitMembership = async (req, res, next) => {
 
 export const approveMembership = async (req, res, next) => {
   try {
-    const { email, name } = req.body;
+    const { email, name, memberDetails, memberId } = req.body;
+    console.log(`[CONTROLLER] approveMembership called for email: "${email}", name: "${name}"`);
+    
     if (!email) {
+      console.warn('[CONTROLLER] Email missing in request body.');
       return res.status(400).json({ error: 'Email is required' });
     }
 
-    // Non-blocking email send so API responds immediately (200 OK)
-    sendMemberActiveEmail(email, name || 'Valued Member').catch(err => {
-      console.error("Background active email sending error:", err);
-    });
+    const details = memberDetails || { memberId, name, email, ...req.body };
+
+    // Trigger email send asynchronously
+    sendMemberActiveEmail(email, name || 'Valued Member', details)
+      .then(success => {
+        console.log(`[CONTROLLER] Member approval email result for ${email}: ${success ? 'DELIVERED' : 'FAILED'}`);
+      })
+      .catch(err => {
+        console.error("[CONTROLLER] Background member approval email error:", err);
+      });
 
     res.json({ success: true, message: 'Approval notification sent.' });
   } catch (error) {
+    console.error('[CONTROLLER] Exception in approveMembership:', error);
     next(error);
   }
 };

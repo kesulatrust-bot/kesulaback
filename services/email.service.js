@@ -50,8 +50,11 @@ const getTransporter = (options = {}) => {
 };
 
 const sendMail = async (to, subject, html) => {
+  console.log(`[SMTP] Attempting to send mail to: "${to}" | Subject: "${subject}"`);
   try {
     const validLogo = getValidLogoPath();
+    console.log(`[SMTP] Logo path check: ${validLogo || 'No logo attached'}`);
+
     const mailOptions = {
       from: `Kesula Charitable Trust <${process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER || 'kesulatrust@gmail.com'}>`,
       to,
@@ -71,21 +74,22 @@ const sendMail = async (to, subject, html) => {
 
     // Try Port 465 (Direct SSL) first
     try {
+      console.log(`[SMTP] Connecting to ${process.env.SMTP_HOST || 'smtp.gmail.com'}:465 (IPv4 direct SSL)...`);
       const transporter465 = getTransporter({ port: 465 });
       const info = await transporter465.sendMail(mailOptions);
-      console.log('✅ Email sent successfully to %s (Port 465): %s', to, info.messageId);
+      console.log('✅ [SMTP SUCCESS] Email sent to %s via Port 465! Message ID: %s', to, info.messageId);
       return true;
     } catch (err465) {
-      console.warn(`⚠️ Port 465 send failed for ${to} (${err465.message}). Retrying via Port 587...`);
+      console.warn(`⚠️ [SMTP WARN] Port 465 send failed for ${to} (${err465.message}). Retrying via Port 587...`);
       
       // Fallback: Port 587 (STARTTLS)
       const transporter587 = getTransporter({ port: 587 });
       const info587 = await transporter587.sendMail(mailOptions);
-      console.log('✅ Email sent successfully to %s (Port 587 fallback): %s', to, info587.messageId);
+      console.log('✅ [SMTP SUCCESS] Email sent to %s via Port 587 fallback! Message ID: %s', to, info587.messageId);
       return true;
     }
   } catch (error) {
-    console.error(`❌ Error sending email to ${to}:`, error.message);
+    console.error(`❌ [SMTP ERROR] Failed to send email to ${to}:`, error.stack || error.message);
     return false;
   }
 };
@@ -111,8 +115,19 @@ export const sendMemberWelcomeEmail = async (email, name, details = {}) => {
 };
 
 export const sendMemberActiveEmail = async (email, name, details = {}) => {
-  const html = memberActiveTemplate(name, details);
-  return sendMail(email, 'Welcome to Kesula Charitable Trust - Official Member ID Card Included', html);
+  console.log(`[EMAIL SERVICE] 📧 sendMemberActiveEmail triggered for: "${email}" | Name: "${name}"`);
+  console.log(`[EMAIL SERVICE] Payload details:`, JSON.stringify(details));
+
+  try {
+    const html = memberActiveTemplate(name, details);
+    console.log(`[EMAIL SERVICE] Generated ID Card Email HTML (${html.length} chars). Invoking sendMail...`);
+    const success = await sendMail(email, 'Welcome to Kesula Charitable Trust - Official Member ID Card Included', html);
+    console.log(`[EMAIL SERVICE] sendMemberActiveEmail result for ${email}: ${success ? '✅ DELIVERED' : '❌ FAILED'}`);
+    return success;
+  } catch (err) {
+    console.error(`[EMAIL SERVICE] Exception in sendMemberActiveEmail for ${email}:`, err);
+    return false;
+  }
 };
 
 export const sendEnquiryEmail = async (email, name, details = {}) => {
