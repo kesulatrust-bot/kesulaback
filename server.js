@@ -36,23 +36,14 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ limit: '1mb', extended: true }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// Strict CORS
-const allowedOrigins = [
-  'https://kesulatrust.org',
-  'https://www.kesulatrust.org',
-  'https://kesulatrust.netlify.app',
-  'https://testing6.techyarts.com',
-  'http://localhost:5173'
-];
+// Universal CORS Setup
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.netlify.app') || origin.endsWith('.techyarts.com')) {
-      callback(null, true);
-    } else {
-      callback(null, true);
-    }
-  }
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+app.options('*', cors());
 
 // Apply global rate limiter
 app.use('/api/', generalApiLimiter);
