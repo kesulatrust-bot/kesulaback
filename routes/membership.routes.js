@@ -31,5 +31,10 @@ router.post('/send-welcome-email', sendWelcomeEmail);
 router.get('/members/:memberId/id-card/download', downloadMemberIdCard);
 router.get('/members/:memberId/id-card/preview', previewMemberIdCard);
 router.get('/members/:memberId/id-card', downloadMemberIdCard);
+router.get('/members/:memberId/download', downloadMemberIdCard);
+router.get('/member/:memberId/id-card/download', downloadMemberIdCard);
+router.get('/member/:memberId/download', downloadMemberIdCard);
+router.get('/id-card/:memberId/download', downloadMemberIdCard);
+router.get('/id-card/:memberId', downloadMemberIdCard);
 
 export default router;

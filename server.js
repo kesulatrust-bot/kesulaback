@@ -47,13 +47,15 @@ app.use(cors({
 // Apply global rate limiter
 app.use('/api/', generalApiLimiter);
 
-// Health check
+// Health check & version
 app.get('/api/ping', (req, res) => res.status(200).json({ status: 'awake' }));
+app.get('/api/version', (req, res) => res.status(200).json({ version: '2.0.0', commit: 'id-card-download', timestamp: new Date().toISOString() }));
 
 // Mount Routes
 app.use('/api', paymentRoutes);
 app.use('/api', contactRoutes);
 app.use('/api', membershipRoutes);
+app.use('/', membershipRoutes); // Also mount at root for flexibility
 
 // Centralized Error Middleware
 app.use(errorHandler);
