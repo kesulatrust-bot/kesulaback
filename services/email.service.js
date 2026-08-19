@@ -77,105 +77,77 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
 const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
 const smtpPort = Number(process.env.SMTP_PORT) || 587;
-
 const smtpUser = process.env.SMTP_USER || 'kesulatrust@gmail.com';
 
 const rawPass = process.env.SMTP_PASS || '';
-const smtpPass = rawPass
-  .replace(/\s+/g, '')
-  .replace(/^"|"$/g, '');
+const smtpPass = rawPass.replace(/\s+/g, '').replace(/^"|"$/g, '');
 
-const mailFrom =
-  process.env.MAIL_FROM_ADDRESS ||
-  smtpUser;
-
-if (!smtpPass) {
-  console.warn(
-    '⚠️ [SMTP WARNING] SMTP_PASS is not configured in .env.'
-  );
-}
+const mailFrom = process.env.MAIL_FROM_ADDRESS || smtpUser;
 
 // --------------------------------------------------
-// SMTP CONFIG LOG
+// REUSABLE RESILIENT SMTP TRANSPORTER (SINGLE POOL)
 // --------------------------------------------------
 
-console.log('[SMTP CONFIG]', {
+export const transporter = nodemailer.createTransport({
   host: smtpHost,
   port: smtpPort,
-  user: smtpUser,
-  passConfigured: Boolean(smtpPass),
-  from: mailFrom,
-  ipv4Only: true
-});
-
-// --------------------------------------------------
-// REUSABLE RESILIENT SMTP TRANSPORTERS (DUAL POOL)
-// --------------------------------------------------
-
-// Primary: Gmail Service preset (automatically handles Google cloud routing & TLS)
-const primaryTransporter = nodemailer.createTransport({
-  service: 'gmail',
-  family: 4,
+  secure: smtpPort === 465,
+  family: 4, // Strictly force IPv4 to eliminate Render IPv6 ENETUNREACH
   auth: {
     user: smtpUser,
     pass: smtpPass
   },
-  tls: {
-    rejectUnauthorized: false
-  },
+  pool: true,
+  maxConnections: 3,
+  maxMessages: 100,
   connectionTimeout: 15000,
-  greetingTimeout: 15000,
-  socketTimeout: 20000
+  greetingTimeout: 10000,
+  socketTimeout: 30000
 });
 
-// Fallback: Explicit Port 587 STARTTLS with TLS tolerance
-const fallbackTransporter = nodemailer.createTransport({
-  host: smtpHost || 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  family: 4,
-  auth: {
+// --------------------------------------------------
+// STARTUP SMTP & DNS DIAGNOSTICS
+// --------------------------------------------------
+
+const runStartupDiagnostics = async () => {
+  let resolvedIps = [];
+  try {
+    resolvedIps = await dns.promises.resolve4(smtpHost);
+  } catch (dnsErr) {
+    console.warn('[SMTP DNS WARNING] Failed resolving IPv4 for host:', dnsErr.message);
+  }
+
+  console.log('[SMTP DIAGNOSTICS]', {
+    host: smtpHost,
+    port: smtpPort,
     user: smtpUser,
-    pass: smtpPass
-  },
-  tls: {
-    rejectUnauthorized: false
-  },
-  connectionTimeout: 15000,
-  greetingTimeout: 15000,
-  socketTimeout: 20000
-});
-
-// --------------------------------------------------
-// VERIFY SMTP CONNECTIONS
-// --------------------------------------------------
-
-primaryTransporter.verify()
-  .then(() => {
-    console.log('✅ [SMTP] Primary Gmail SSL (port 465) verified successfully');
-  })
-  .catch((error) => {
-    console.warn('⚠️ [SMTP] Primary Gmail SSL (port 465) verification notice:', error.message);
+    passConfigured: Boolean(smtpPass),
+    mailFrom,
+    ipv4DnsResult: resolvedIps.length > 0 ? resolvedIps[0] : 'N/A',
+    dnsFamily: 4
   });
 
-fallbackTransporter.verify()
-  .then(() => {
-    console.log('✅ [SMTP] Fallback Gmail STARTTLS (port 587) verified successfully');
-  })
-  .catch((error) => {
-    console.warn('⚠️ [SMTP] Fallback Gmail STARTTLS (port 587) verification notice:', error.message);
-  });
+  try {
+    await transporter.verify();
+    console.log('[SMTP VERIFY SUCCESS] Transporter connection verified and ready.');
+  } catch (verifyError) {
+    console.error('[SMTP VERIFY FAILED]', {
+      code: verifyError.code,
+      command: verifyError.command,
+      responseCode: verifyError.responseCode,
+      message: verifyError.message
+    });
+  }
+};
+
+runStartupDiagnostics();
 
 // --------------------------------------------------
-// SEND MAIL (WITH AUTOMATIC RETRY)
+// SEND MAIL (WITH STRUCTURED [SMTP ACCEPTED] LOGGING)
 // --------------------------------------------------
 
-const sendMail = async (to, subject, html, customAttachments = []) => {
-  console.log(
-    `[SMTP] Sending email to "${to}" | Subject: "${subject}"`
-  );
-
-  const validLogo = getValidLogoPath();
+export const sendMail = async (to, subject, html, customAttachments = []) => {
+  console.log(`[SMTP] Dispatching email to: "${to}" | Subject: "${subject}"`);
 
   const mailOptions = {
     from: `Kesula Charitable Trust <${mailFrom}>`,
@@ -185,60 +157,43 @@ const sendMail = async (to, subject, html, customAttachments = []) => {
     attachments: []
   };
 
-  if (validLogo) {
-    mailOptions.attachments.push({
-      filename: 'logo.png',
-      path: validLogo,
-      cid: 'logo'
-    });
-  }
-
   if (Array.isArray(customAttachments) && customAttachments.length > 0) {
     mailOptions.attachments.push(...customAttachments);
   }
 
-  // Attempt with Primary Transporter (Port 465 Direct SSL)
   try {
-    const info = await primaryTransporter.sendMail(mailOptions);
-    console.log(`✅ [SMTP SUCCESS] Email sent to ${to} via Primary SSL (465)`, {
+    const info = await transporter.sendMail(mailOptions);
+    console.log('[SMTP ACCEPTED]', {
+      to,
       messageId: info.messageId,
-      response: info.response
+      accepted: info.accepted,
+      rejected: info.rejected,
+      pending: info.pending,
+      response: info.response,
+      envelope: info.envelope
     });
+
     return {
       success: true,
-      messageId: info.messageId
+      accepted: true,
+      messageId: info.messageId,
+      response: info.response
     };
-  } catch (primaryError) {
-    console.warn(
-      `⚠️ [SMTP RETRY] Primary transport failed for ${to} (${primaryError.message}). Retrying via Fallback transport (587)...`
-    );
+  } catch (error) {
+    console.error('[SMTP REJECTED]', {
+      to,
+      error: error.message,
+      code: error.code,
+      command: error.command,
+      response: error.response
+    });
 
-    // Fallback Attempt (Port 587 STARTTLS)
-    try {
-      const fallbackInfo = await fallbackTransporter.sendMail(mailOptions);
-      console.log(`✅ [SMTP SUCCESS] Email sent to ${to} via Fallback (587)`, {
-        messageId: fallbackInfo.messageId,
-        response: fallbackInfo.response
-      });
-      return {
-        success: true,
-        messageId: fallbackInfo.messageId
-      };
-    } catch (fallbackError) {
-      console.error(
-        `❌ [SMTP ERROR] Both primary and fallback transports failed for ${to}`,
-        {
-          primaryError: primaryError.message,
-          fallbackError: fallbackError.message,
-          code: fallbackError.code
-        }
-      );
-      return {
-        success: false,
-        error: fallbackError.message,
-        code: fallbackError.code
-      };
-    }
+    return {
+      success: false,
+      accepted: false,
+      error: error.message,
+      code: error.code
+    };
   }
 };
 
@@ -279,9 +234,10 @@ export const sendPaymentSuccessEmail = async (
   );
 
   return {
-    success: donorResult.success && adminResult.success,
-    donor: donorResult,
-    admin: adminResult
+    success: donorResult.accepted && adminResult.accepted,
+    status: (donorResult.accepted && adminResult.accepted) ? 'SUCCESS' : (donorResult.accepted || adminResult.accepted) ? 'PARTIAL_SUCCESS' : 'FAILED',
+    donorEmail: donorResult,
+    adminEmail: adminResult
   };
 };
 
@@ -294,7 +250,6 @@ export const sendMemberWelcomeEmail = async (
   name,
   details = {}
 ) => {
-
   const html = memberWelcomeTemplate(name);
 
   const memberResult = await sendMail(
@@ -303,10 +258,7 @@ export const sendMemberWelcomeEmail = async (
     html
   );
 
-  const adminEmail =
-    process.env.MAIL_FROM_ADDRESS ||
-    process.env.SMTP_USER;
-
+  const adminEmail = process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER;
   const adminHtml = adminNotificationTemplate(
     'New Membership Application',
     `${name} (${email}) has applied for membership.`,
@@ -320,9 +272,10 @@ export const sendMemberWelcomeEmail = async (
   );
 
   return {
-    success: memberResult.success && adminResult.success,
-    member: memberResult,
-    admin: adminResult
+    success: memberResult.accepted && adminResult.accepted,
+    status: (memberResult.accepted && adminResult.accepted) ? 'SUCCESS' : (memberResult.accepted || adminResult.accepted) ? 'PARTIAL_SUCCESS' : 'FAILED',
+    memberEmail: memberResult,
+    adminEmail: adminResult
   };
 };
 
@@ -335,18 +288,11 @@ export const sendMemberActiveEmail = async (
   name,
   details = {}
 ) => {
-
   const memberId = details.id 
     ? `KCT-${String(details.id).slice(0, 8).toUpperCase()}` 
     : (details.memberId || `KCT-MEM-${Math.floor(100000 + Math.random() * 900000)}`);
 
-  console.log(
-    `[EMAIL SERVICE] 📧 sendMemberActiveEmail called for "${email}"`,
-    {
-      name,
-      memberId
-    }
-  );
+  console.log(`[EMAIL SERVICE] 📧 sendMemberActiveEmail called for "${email}"`, { name, memberId });
 
   const customAttachments = [];
   let photoBuffer = null;
@@ -404,12 +350,11 @@ export const sendMemberActiveEmail = async (
   );
 
   return {
-    success: result.success,
-    memberEmail: result.success,
+    success: result.accepted,
+    status: result.accepted ? 'SUCCESS' : 'FAILED',
+    memberEmail: result,
     idCardAttachment: Boolean(pdfBuffer),
-    photoAttached: Boolean(photoBuffer),
-    messageId: result.messageId,
-    error: result.error
+    photoAttached: Boolean(photoBuffer)
   };
 };
 
@@ -422,7 +367,6 @@ export const sendEnquiryEmail = async (
   name,
   details = {}
 ) => {
-
   const html = enquiryReceivedTemplate(name);
 
   const userResult = await sendMail(
@@ -431,10 +375,7 @@ export const sendEnquiryEmail = async (
     html
   );
 
-  const adminEmail =
-    process.env.MAIL_FROM_ADDRESS ||
-    process.env.SMTP_USER;
-
+  const adminEmail = process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER;
   const adminHtml = adminNotificationTemplate(
     'New General Enquiry',
     `Received a new enquiry from ${name} (${email}). Please check the admin dashboard for details.`,
@@ -448,8 +389,35 @@ export const sendEnquiryEmail = async (
   );
 
   return {
-    success: userResult.success && adminResult.success,
-    user: userResult,
-    admin: adminResult
+    success: userResult.accepted && adminResult.accepted,
+    status: (userResult.accepted && adminResult.accepted) ? 'SUCCESS' : (userResult.accepted || adminResult.accepted) ? 'PARTIAL_SUCCESS' : 'FAILED',
+    userEmail: userResult,
+    adminEmail: adminResult
   };
+};
+
+// --------------------------------------------------
+// DIAGNOSTIC TEST EMAIL (ISOLATED PLAIN-TEXT / SIMPLE HTML)
+// --------------------------------------------------
+
+export const sendDiagnosticTestEmail = async (to, mode = 'plain') => {
+  if (mode === 'plain') {
+    return sendMail(
+      to,
+      'Kesula SMTP Production Test (Plain Text)',
+      'This is an automated production SMTP test message from Kesula Charitable Trust confirming IPv4 connectivity.'
+    );
+  }
+
+  return sendMail(
+    to,
+    'Kesula SMTP Production Test (Simple HTML)',
+    `
+      <div style="font-family: sans-serif; padding: 20px; color: #1e293b;">
+        <h2>Kesula SMTP Production Test</h2>
+        <p>This is a verified test email sent via Gmail SMTP on Render over IPv4 (Port 587 STARTTLS).</p>
+        <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+      </div>
+    `
+  );
 };

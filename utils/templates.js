@@ -1,6 +1,6 @@
 // Email Templates for Kesula Charitable Trust
 
-const LOGO_URL = "cid:logo";
+const LOGO_URL = "https://kesulatrust.org/images/logo.png";
 
 const baseStyles = `
   font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -315,7 +315,7 @@ export const adminNotificationTemplate = (title, message, details = {}) => {
       ` : ''}
       
       <br/>
-      <p style="text-align: center;"><a href="http://localhost:5173/admin" style="background-color: #3498db; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Log in to Admin Dashboard</a></p>
+      <p style="text-align: center;"><a href="https://kesulatrust.org/admin" style="background-color: #3498db; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Log in to Admin Dashboard</a></p>
     </div>
     <div style="${footerStyles}">
       <p>&copy; ${new Date().getFullYear()} Kesula Charitable Trust. System Generated Email.</p>

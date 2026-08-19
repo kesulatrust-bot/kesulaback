@@ -15,6 +15,7 @@ import { errorHandler } from './middleware/error.middleware.js';
 import paymentRoutes from './routes/payment.routes.js';
 import contactRoutes from './routes/contact.routes.js';
 import membershipRoutes from './routes/membership.routes.js';
+import debugRoutes from './routes/debug.routes.js';
 
 // Environment Validation
 const requiredEnvVars = [
@@ -63,6 +64,7 @@ app.get('/api/version', (req, res) => res.status(200).json({ version: '2.1.0', c
 app.use('/api', paymentRoutes);
 app.use('/api', contactRoutes);
 app.use('/api', membershipRoutes);
+app.use('/api/debug', debugRoutes);
 app.use('/', membershipRoutes); // Also mount at root for flexibility
 
 // Centralized Error Middleware
