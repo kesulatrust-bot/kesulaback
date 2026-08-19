@@ -194,3 +194,46 @@ export const previewMemberIdCard = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Service-role photo upload endpoint (bypasses RLS safely)
+ * POST /api/upload-photo
+ */
+export const uploadMemberPhoto = async (req, res, next) => {
+  try {
+    const { imageBase64, mimeType = 'image/webp', folder = 'members' } = req.body;
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'imageBase64 data is required' });
+    }
+
+    const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/i, '');
+    const buffer = Buffer.from(cleanBase64, 'base64');
+    const ext = mimeType.includes('png') ? 'png' : (mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : 'webp');
+    const filePath = `${folder}/${Date.now()}-${Math.floor(Math.random() * 10000)}.${ext}`;
+
+    console.log(`[SERVICE ROLE UPLOAD] Uploading photo to images/${filePath} (${(buffer.length / 1024).toFixed(1)} KB)`);
+
+    const { data, error } = await supabase.storage
+      .from('images')
+      .upload(filePath, buffer, {
+        contentType: mimeType,
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) {
+      console.error('[SERVICE ROLE UPLOAD ERROR]:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    const { data: publicUrlData } = supabase.storage.from('images').getPublicUrl(filePath);
+    return res.json({
+      success: true,
+      publicUrl: publicUrlData?.publicUrl,
+      filePath
+    });
+  } catch (error) {
+    console.error('[SERVICE ROLE UPLOAD EXCEPTION]:', error);
+    next(error);
+  }
+};

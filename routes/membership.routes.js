@@ -5,7 +5,8 @@ import {
   approveMembership, 
   sendWelcomeEmail, 
   downloadMemberIdCard, 
-  previewMemberIdCard 
+  previewMemberIdCard,
+  uploadMemberPhoto
 } from '../controllers/membership.controller.js';
 import { validateRequest } from '../middleware/validation.middleware.js';
 import { emailMemberLimiter } from '../middleware/rateLimit.middleware.js';
@@ -26,6 +27,9 @@ const memberSubmitSchema = z.object({
 router.post('/submit-member', emailMemberLimiter, validateRequest(memberSubmitSchema), submitMembership);
 router.post('/approve-member', approveMembership);
 router.post('/send-welcome-email', sendWelcomeEmail);
+router.post('/welcome-email', sendWelcomeEmail);
+router.post('/upload-photo', uploadMemberPhoto);
+router.post('/upload', uploadMemberPhoto);
 
 // Direct Member ID Card PDF Download & Preview Endpoints
 router.get('/members/:memberId/id-card/download', downloadMemberIdCard);
