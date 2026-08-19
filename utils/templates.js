@@ -99,7 +99,7 @@ export const memberActiveTemplate = (name, details = {}) => {
   // Backend direct download endpoint
   const backendUrl = process.env.API_URL || process.env.VITE_API_URL || 'https://kesulaback-kg86.onrender.com';
   const downloadUrl = `${backendUrl}/api/members/${encodeURIComponent(details.id || memberId)}/id-card/download`;
-  const verifyUrl = `https://www.kesulatrust.org/verify-member?id=${encodeURIComponent(memberId)}&name=${encodeURIComponent(name)}`;
+  const verifyUrl = `https://kesulatrust.org/verify-member?id=${encodeURIComponent(memberId)}&name=${encodeURIComponent(name)}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(verifyUrl)}&color=8a3004`;
 
   // Photo resolution: prefer CID if attached, then public HTTPS URL
