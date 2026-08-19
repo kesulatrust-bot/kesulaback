@@ -3,107 +3,369 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { paymentSuccessTemplate, memberWelcomeTemplate, memberActiveTemplate, adminNotificationTemplate } from '../utils/templates.js';
+
+import {
+  paymentSuccessTemplate,
+  memberWelcomeTemplate,
+  memberActiveTemplate,
+  adminNotificationTemplate
+} from '../utils/templates.js';
+
 import { enquiryReceivedTemplate } from '../utils/templates-enquiry.js';
 
 dotenv.config();
 
-// ESM equivalent of __dirname
+// --------------------------------------------------
+// PATHS
+// --------------------------------------------------
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Path to logo — checked in backend/public/images then frontend/public/images
-const LOGO_PNG_BACKEND = path.resolve(__dirname, '..', 'public', 'images', 'logo.png');
-const LOGO_PNG_FRONTEND = path.resolve(__dirname, '..', '..', 'frontend', 'public', 'images', 'logo.png');
-const LOGO_WEBP_FRONTEND = path.resolve(__dirname, '..', '..', 'frontend', 'public', 'images', 'logo.webp');
+const LOGO_PNG_BACKEND = path.resolve(
+  __dirname,
+  '..',
+  'public',
+  'images',
+  'logo.png'
+);
+
+const LOGO_PNG_FRONTEND = path.resolve(
+  __dirname,
+  '..',
+  '..',
+  'frontend',
+  'public',
+  'images',
+  'logo.png'
+);
+
+const LOGO_WEBP_FRONTEND = path.resolve(
+  __dirname,
+  '..',
+  '..',
+  'frontend',
+  'public',
+  'images',
+  'logo.webp'
+);
 
 const getValidLogoPath = () => {
   if (fs.existsSync(LOGO_PNG_BACKEND)) return LOGO_PNG_BACKEND;
   if (fs.existsSync(LOGO_PNG_FRONTEND)) return LOGO_PNG_FRONTEND;
   if (fs.existsSync(LOGO_WEBP_FRONTEND)) return LOGO_WEBP_FRONTEND;
+
   return null;
 };
 
-const rawPass = process.env.SMTP_PASS || '';
-const cleanPass = rawPass.replace(/\s+/g, '').replace(/^"|"$/g, '');
+// --------------------------------------------------
+// SMTP CONFIG
+// --------------------------------------------------
 
-const createTransporter = () => {
-  const port = Number(process.env.SMTP_PORT) || 465;
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: port,
-    secure: port === 465,
-    family: 4, // Force IPv4 — prevents ENETUNREACH errors on Render
-    auth: {
-      user: process.env.SMTP_USER || 'kesulatrust@gmail.com',
-      pass: cleanPass,
-    },
-    tls: {
-      rejectUnauthorized: false
-    },
-    connectionTimeout: 15000,
-    greetingTimeout: 10000,
-    socketTimeout: 20000,
+const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+const smtpPort = Number(process.env.SMTP_PORT);
+
+const smtpUser = process.env.SMTP_USER || 'kesulatrust@gmail.com';
+
+const rawPass = process.env.SMTP_PASS || '';
+const smtpPass = rawPass
+  .replace(/\s+/g, '')
+  .replace(/^"|"$/g, '');
+
+const mailFrom =
+  process.env.MAIL_FROM_ADDRESS ||
+  smtpUser;
+
+if (!smtpPort) {
+  throw new Error(
+    '❌ SMTP_PORT is not configured. Set SMTP_PORT=587 in Render.'
+  );
+}
+
+if (!smtpPass) {
+  throw new Error(
+    '❌ SMTP_PASS is not configured.'
+  );
+}
+
+// --------------------------------------------------
+// SMTP CONFIG LOG
+// --------------------------------------------------
+
+console.log('[SMTP CONFIG]', {
+  host: smtpHost,
+  port: smtpPort,
+  user: smtpUser,
+  passConfigured: Boolean(smtpPass),
+  from: mailFrom,
+  ipv4Only: true
+});
+
+// --------------------------------------------------
+// REUSABLE SMTP TRANSPORTER
+// --------------------------------------------------
+
+const transporter = nodemailer.createTransport({
+  host: smtpHost,
+
+  // Gmail:
+  // 587 = STARTTLS
+  // 465 = implicit TLS
+  port: smtpPort,
+
+  secure: smtpPort === 465,
+
+  // Important for Render IPv6 connectivity issue
+  family: 4,
+
+  auth: {
+    user: smtpUser,
+    pass: smtpPass
+  },
+
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 20000
+});
+
+// --------------------------------------------------
+// VERIFY SMTP CONNECTION
+// --------------------------------------------------
+
+transporter.verify()
+  .then(() => {
+    console.log(
+      '✅ [SMTP] Gmail SMTP connection verified successfully'
+    );
+  })
+  .catch((error) => {
+    console.error(
+      '❌ [SMTP] Gmail SMTP verification failed',
+      {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+        responseCode: error.responseCode
+      }
+    );
   });
-};
+
+// --------------------------------------------------
+// SEND MAIL
+// --------------------------------------------------
 
 const sendMail = async (to, subject, html) => {
-  console.log(`[SMTP] Sending email to: "${to}" | Subject: "${subject}"`);
+  console.log(
+    `[SMTP] Sending email to "${to}" | Subject: "${subject}"`
+  );
+
   try {
     const validLogo = getValidLogoPath();
+
     const mailOptions = {
-      from: `Kesula Charitable Trust <${process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER || 'kesulatrust@gmail.com'}>`,
+      from: `Kesula Charitable Trust <${mailFrom}>`,
       to,
       subject,
-      html,
+      html
     };
 
     if (validLogo) {
       mailOptions.attachments = [
         {
-          filename: 'logo.jpeg',
+          filename: 'logo.png',
           path: validLogo,
           cid: 'logo'
         }
       ];
     }
 
-    const transporter = createTransporter();
     const info = await transporter.sendMail(mailOptions);
-    console.log('✅ [SMTP SUCCESS] Email sent successfully to %s: %s', to, info.messageId);
-    return true;
+
+    console.log(
+      `✅ [SMTP SUCCESS] Email sent to ${to}`,
+      {
+        messageId: info.messageId,
+        response: info.response
+      }
+    );
+
+    return {
+      success: true,
+      messageId: info.messageId
+    };
+
   } catch (error) {
-    console.error(`❌ [SMTP ERROR] Error sending email to ${to}:`, error.message);
-    return false;
+
+    console.error(
+      `❌ [SMTP ERROR] Failed sending email to ${to}`,
+      {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+        responseCode: error.responseCode
+      }
+    );
+
+    return {
+      success: false,
+      error: error.message,
+      code: error.code
+    };
   }
 };
 
-export const sendPaymentSuccessEmail = async (email, name, amount) => {
-  const html = paymentSuccessTemplate(name, amount);
-  await sendMail(email, 'Thank You for Your Donation - Kesula Charitable Trust', html);
-  const adminHtml = adminNotificationTemplate('New Donation', `Received ₹${amount} from ${name} (${email}).`);
-  await sendMail(process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER, 'New Donation Received', adminHtml);
-  return true;
+// --------------------------------------------------
+// DONATION EMAIL
+// --------------------------------------------------
+
+export const sendPaymentSuccessEmail = async (
+  email,
+  name,
+  amount
+) => {
+
+  const html = paymentSuccessTemplate(
+    name,
+    amount
+  );
+
+  const donorResult = await sendMail(
+    email,
+    'Thank You for Your Donation - Kesula Charitable Trust',
+    html
+  );
+
+  const adminEmail =
+    process.env.MAIL_FROM_ADDRESS ||
+    process.env.SMTP_USER;
+
+  const adminHtml = adminNotificationTemplate(
+    'New Donation',
+    `Received ₹${amount} from ${name} (${email}).`
+  );
+
+  const adminResult = await sendMail(
+    adminEmail,
+    'New Donation Received',
+    adminHtml
+  );
+
+  return {
+    success: donorResult.success && adminResult.success,
+    donor: donorResult,
+    admin: adminResult
+  };
 };
 
-export const sendMemberWelcomeEmail = async (email, name, details = {}) => {
+// --------------------------------------------------
+// MEMBER WELCOME EMAIL
+// --------------------------------------------------
+
+export const sendMemberWelcomeEmail = async (
+  email,
+  name,
+  details = {}
+) => {
+
   const html = memberWelcomeTemplate(name);
-  await sendMail(email, 'Membership Application Received - Kesula Charitable Trust', html);
-  const adminHtml = adminNotificationTemplate('New Membership Application', `${name} (${email}) has applied for membership.`, details);
-  await sendMail(process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER, 'New Membership Application', adminHtml);
-  return true;
+
+  const memberResult = await sendMail(
+    email,
+    'Membership Application Received - Kesula Charitable Trust',
+    html
+  );
+
+  const adminEmail =
+    process.env.MAIL_FROM_ADDRESS ||
+    process.env.SMTP_USER;
+
+  const adminHtml = adminNotificationTemplate(
+    'New Membership Application',
+    `${name} (${email}) has applied for membership.`,
+    details
+  );
+
+  const adminResult = await sendMail(
+    adminEmail,
+    'New Membership Application',
+    adminHtml
+  );
+
+  return {
+    success: memberResult.success && adminResult.success,
+    member: memberResult,
+    admin: adminResult
+  };
 };
 
-export const sendMemberActiveEmail = async (email, name, details = {}) => {
-  console.log(`[EMAIL SERVICE] 📧 sendMemberActiveEmail called for: "${email}" (Name: "${name}")`);
-  const html = memberActiveTemplate(name, details);
-  return sendMail(email, 'Welcome to Kesula Charitable Trust - Official Member ID Card Included', html);
+// --------------------------------------------------
+// MEMBER ACTIVE EMAIL
+// --------------------------------------------------
+
+export const sendMemberActiveEmail = async (
+  email,
+  name,
+  details = {}
+) => {
+
+  console.log(
+    `[EMAIL SERVICE] 📧 sendMemberActiveEmail called for "${email}"`,
+    {
+      name
+    }
+  );
+
+  const html = memberActiveTemplate(
+    name,
+    details
+  );
+
+  return sendMail(
+    email,
+    'Welcome to Kesula Charitable Trust - Official Member ID Card Included',
+    html
+  );
 };
 
-export const sendEnquiryEmail = async (email, name, details = {}) => {
+// --------------------------------------------------
+// ENQUIRY EMAIL
+// --------------------------------------------------
+
+export const sendEnquiryEmail = async (
+  email,
+  name,
+  details = {}
+) => {
+
   const html = enquiryReceivedTemplate(name);
-  await sendMail(email, 'Enquiry Received - Kesula Charitable Trust', html);
-  const adminHtml = adminNotificationTemplate('New General Enquiry', `Received a new enquiry from ${name} (${email}). Please check the admin dashboard for details.`, details);
-  await sendMail(process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER, 'New General Enquiry', adminHtml);
-  return true;
+
+  const userResult = await sendMail(
+    email,
+    'Enquiry Received - Kesula Charitable Trust',
+    html
+  );
+
+  const adminEmail =
+    process.env.MAIL_FROM_ADDRESS ||
+    process.env.SMTP_USER;
+
+  const adminHtml = adminNotificationTemplate(
+    'New General Enquiry',
+    `Received a new enquiry from ${name} (${email}). Please check the admin dashboard for details.`,
+    details
+  );
+
+  const adminResult = await sendMail(
+    adminEmail,
+    'New General Enquiry',
+    adminHtml
+  );
+
+  return {
+    success: userResult.success && adminResult.success,
+    user: userResult,
+    admin: adminResult
+  };
 };
