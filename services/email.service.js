@@ -1,8 +1,14 @@
 import nodemailer from 'nodemailer';
+import dns from 'node:dns';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+
+// Force Node.js to prioritize IPv4 address resolution (fixes Render IPv6 ENETUNREACH)
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (e) {}
 
 import {
   paymentSuccessTemplate,
@@ -109,6 +115,7 @@ console.log('[SMTP CONFIG]', {
 // Primary: Gmail Service preset (automatically handles Google cloud routing & TLS)
 const primaryTransporter = nodemailer.createTransport({
   service: 'gmail',
+  family: 4,
   auth: {
     user: smtpUser,
     pass: smtpPass
@@ -126,6 +133,7 @@ const fallbackTransporter = nodemailer.createTransport({
   host: smtpHost || 'smtp.gmail.com',
   port: 587,
   secure: false,
+  family: 4,
   auth: {
     user: smtpUser,
     pass: smtpPass

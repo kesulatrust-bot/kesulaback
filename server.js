@@ -1,8 +1,14 @@
 import 'dotenv/config';
+import dns from 'node:dns';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+
+// Force Node.js to resolve IPv4 addresses first (fixes Render ENETUNREACH on IPv6)
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (e) {}
 
 import { generalApiLimiter } from './middleware/rateLimit.middleware.js';
 import { errorHandler } from './middleware/error.middleware.js';
