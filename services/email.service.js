@@ -103,57 +103,64 @@ console.log('[SMTP CONFIG]', {
 });
 
 // --------------------------------------------------
-// REUSABLE SMTP TRANSPORTER
+// REUSABLE RESILIENT SMTP TRANSPORTERS (DUAL POOL)
 // --------------------------------------------------
 
-const transporter = nodemailer.createTransport({
+// Primary: Direct SSL on Port 465 with IPv4 forcing (fastest & most reliable on Render/Cloud)
+const primaryTransporter = nodemailer.createTransport({
   host: smtpHost,
-
-  // Gmail:
-  // 587 = STARTTLS
-  // 465 = implicit TLS
-  port: smtpPort,
-
-  secure: smtpPort === 465,
-
-  // Important for Render IPv6 connectivity issue
+  port: 465,
+  secure: true,
   family: 4,
-
   auth: {
     user: smtpUser,
     pass: smtpPass
   },
+  connectionTimeout: 30000,
+  greetingTimeout: 30000,
+  socketTimeout: 45000,
+  pool: true,
+  maxConnections: 3,
+  maxMessages: 50
+});
 
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 20000
+// Fallback: STARTTLS on Port 587 with IPv4 forcing
+const fallbackTransporter = nodemailer.createTransport({
+  host: smtpHost,
+  port: 587,
+  secure: false,
+  family: 4,
+  auth: {
+    user: smtpUser,
+    pass: smtpPass
+  },
+  connectionTimeout: 30000,
+  greetingTimeout: 30000,
+  socketTimeout: 45000
 });
 
 // --------------------------------------------------
-// VERIFY SMTP CONNECTION
+// VERIFY SMTP CONNECTIONS
 // --------------------------------------------------
 
-transporter.verify()
+primaryTransporter.verify()
   .then(() => {
-    console.log(
-      '✅ [SMTP] Gmail SMTP connection verified successfully'
-    );
+    console.log('✅ [SMTP] Primary Gmail SSL (port 465) verified successfully');
   })
   .catch((error) => {
-    console.error(
-      '❌ [SMTP] Gmail SMTP verification failed',
-      {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-        responseCode: error.responseCode
-      }
-    );
+    console.warn('⚠️ [SMTP] Primary Gmail SSL (port 465) verification notice:', error.message);
+  });
+
+fallbackTransporter.verify()
+  .then(() => {
+    console.log('✅ [SMTP] Fallback Gmail STARTTLS (port 587) verified successfully');
+  })
+  .catch((error) => {
+    console.warn('⚠️ [SMTP] Fallback Gmail STARTTLS (port 587) verification notice:', error.message);
   });
 
 // --------------------------------------------------
-// SEND MAIL
+// SEND MAIL (WITH AUTOMATIC RETRY)
 // --------------------------------------------------
 
 const sendMail = async (to, subject, html, customAttachments = []) => {
@@ -161,62 +168,70 @@ const sendMail = async (to, subject, html, customAttachments = []) => {
     `[SMTP] Sending email to "${to}" | Subject: "${subject}"`
   );
 
+  const validLogo = getValidLogoPath();
+
+  const mailOptions = {
+    from: `Kesula Charitable Trust <${mailFrom}>`,
+    to,
+    subject,
+    html,
+    attachments: []
+  };
+
+  if (validLogo) {
+    mailOptions.attachments.push({
+      filename: 'logo.png',
+      path: validLogo,
+      cid: 'logo'
+    });
+  }
+
+  if (Array.isArray(customAttachments) && customAttachments.length > 0) {
+    mailOptions.attachments.push(...customAttachments);
+  }
+
+  // Attempt with Primary Transporter (Port 465 Direct SSL)
   try {
-    const validLogo = getValidLogoPath();
-
-    const mailOptions = {
-      from: `Kesula Charitable Trust <${mailFrom}>`,
-      to,
-      subject,
-      html,
-      attachments: []
-    };
-
-    if (validLogo) {
-      mailOptions.attachments.push({
-        filename: 'logo.png',
-        path: validLogo,
-        cid: 'logo'
-      });
-    }
-
-    if (Array.isArray(customAttachments) && customAttachments.length > 0) {
-      mailOptions.attachments.push(...customAttachments);
-    }
-
-    const info = await transporter.sendMail(mailOptions);
-
-    console.log(
-      `✅ [SMTP SUCCESS] Email sent to ${to}`,
-      {
-        messageId: info.messageId,
-        response: info.response
-      }
-    );
-
+    const info = await primaryTransporter.sendMail(mailOptions);
+    console.log(`✅ [SMTP SUCCESS] Email sent to ${to} via Primary SSL (465)`, {
+      messageId: info.messageId,
+      response: info.response
+    });
     return {
       success: true,
       messageId: info.messageId
     };
-
-  } catch (error) {
-
-    console.error(
-      `❌ [SMTP ERROR] Failed sending email to ${to}`,
-      {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-        responseCode: error.responseCode
-      }
+  } catch (primaryError) {
+    console.warn(
+      `⚠️ [SMTP RETRY] Primary transport failed for ${to} (${primaryError.message}). Retrying via Fallback transport (587)...`
     );
 
-    return {
-      success: false,
-      error: error.message,
-      code: error.code
-    };
+    // Fallback Attempt (Port 587 STARTTLS)
+    try {
+      const fallbackInfo = await fallbackTransporter.sendMail(mailOptions);
+      console.log(`✅ [SMTP SUCCESS] Email sent to ${to} via Fallback (587)`, {
+        messageId: fallbackInfo.messageId,
+        response: fallbackInfo.response
+      });
+      return {
+        success: true,
+        messageId: fallbackInfo.messageId
+      };
+    } catch (fallbackError) {
+      console.error(
+        `❌ [SMTP ERROR] Both primary and fallback transports failed for ${to}`,
+        {
+          primaryError: primaryError.message,
+          fallbackError: fallbackError.message,
+          code: fallbackError.code
+        }
+      );
+      return {
+        success: false,
+        error: fallbackError.message,
+        code: fallbackError.code
+      };
+    }
   }
 };
 
