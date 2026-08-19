@@ -12,6 +12,7 @@ import {
 } from '../utils/templates.js';
 
 import { enquiryReceivedTemplate } from '../utils/templates-enquiry.js';
+import { generateMemberIdCardPdf, getImageBuffer } from './idCard.service.js';
 
 dotenv.config();
 
@@ -155,7 +156,7 @@ transporter.verify()
 // SEND MAIL
 // --------------------------------------------------
 
-const sendMail = async (to, subject, html) => {
+const sendMail = async (to, subject, html, customAttachments = []) => {
   console.log(
     `[SMTP] Sending email to "${to}" | Subject: "${subject}"`
   );
@@ -167,17 +168,20 @@ const sendMail = async (to, subject, html) => {
       from: `Kesula Charitable Trust <${mailFrom}>`,
       to,
       subject,
-      html
+      html,
+      attachments: []
     };
 
     if (validLogo) {
-      mailOptions.attachments = [
-        {
-          filename: 'logo.png',
-          path: validLogo,
-          cid: 'logo'
-        }
-      ];
+      mailOptions.attachments.push({
+        filename: 'logo.png',
+        path: validLogo,
+        cid: 'logo'
+      });
+    }
+
+    if (Array.isArray(customAttachments) && customAttachments.length > 0) {
+      mailOptions.attachments.push(...customAttachments);
     }
 
     const info = await transporter.sendMail(mailOptions);
@@ -310,23 +314,81 @@ export const sendMemberActiveEmail = async (
   details = {}
 ) => {
 
+  const memberId = details.id 
+    ? `KCT-${String(details.id).slice(0, 8).toUpperCase()}` 
+    : (details.memberId || `KCT-MEM-${Math.floor(100000 + Math.random() * 900000)}`);
+
   console.log(
     `[EMAIL SERVICE] 📧 sendMemberActiveEmail called for "${email}"`,
     {
-      name
+      name,
+      memberId
     }
   );
 
+  const customAttachments = [];
+  let photoBuffer = null;
+
+  // 1. Process Member Photo
+  const photoSource = details.photoUrl || details.photo_url || details.photo || details.avatar_url || '';
+  if (photoSource) {
+    photoBuffer = await getImageBuffer(photoSource);
+    if (photoBuffer) {
+      customAttachments.push({
+        filename: 'member-photo.jpg',
+        content: photoBuffer,
+        cid: 'memberphoto'
+      });
+    }
+  }
+
+  // 2. Generate Print-Ready Vector PDF ID Card
+  let pdfBuffer = null;
+  try {
+    pdfBuffer = await generateMemberIdCardPdf({
+      ...details,
+      id: details.id || memberId,
+      fullName: name,
+      email
+    });
+
+    if (pdfBuffer) {
+      customAttachments.push({
+        filename: `Kesula-Member-${memberId}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      });
+    }
+  } catch (pdfErr) {
+    console.error('[EMAIL SERVICE] Failed generating ID Card PDF attachment:', pdfErr);
+  }
+
+  // 3. Render Email HTML Template
   const html = memberActiveTemplate(
     name,
-    details
+    {
+      ...details,
+      memberId,
+      hasPhotoAttachment: Boolean(photoBuffer),
+      publicPhotoUrl: (photoSource && (photoSource.startsWith('http://') || photoSource.startsWith('https://'))) ? photoSource : ''
+    }
   );
 
-  return sendMail(
+  const result = await sendMail(
     email,
     'Welcome to Kesula Charitable Trust - Official Member ID Card Included',
-    html
+    html,
+    customAttachments
   );
+
+  return {
+    success: result.success,
+    memberEmail: result.success,
+    idCardAttachment: Boolean(pdfBuffer),
+    photoAttached: Boolean(photoBuffer),
+    messageId: result.messageId,
+    error: result.error
+  };
 };
 
 // --------------------------------------------------

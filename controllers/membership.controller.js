@@ -1,21 +1,36 @@
 import { supabase } from '../services/supabase.service.js';
 import { sendMemberWelcomeEmail, sendMemberActiveEmail } from '../services/email.service.js';
+import { generateMemberIdCardPdf } from '../services/idCard.service.js';
 
 export const submitMembership = async (req, res, next) => {
   try {
-    const { fullName, email, phone, address, interestArea, message } = req.body;
+    const { fullName, email, phone, address, interestArea, message, photoUrl, photo_url } = req.body;
+    const finalPhoto = photoUrl || photo_url || '';
     
     // Insert into Supabase
-    const { error } = await supabase.from('members').insert([{ fullName, email, phone, address, interestArea, message, status: 'pending' }]);
-    if (error) throw new Error(error.message);
+    const payload = { fullName, email, phone, address, interestArea, message, status: 'pending' };
+    if (finalPhoto) payload.photo_url = finalPhoto;
+
+    const { data, error } = await supabase.from('members').insert([payload]).select();
+    if (error) {
+      // Fallback if photo_url column does not exist
+      if (error.message && (error.message.includes('photo_url') || error.message.includes('photoUrl'))) {
+        delete payload.photo_url;
+        const retry = await supabase.from('members').insert([payload]).select();
+        if (retry.error) throw new Error(retry.error.message);
+      } else {
+        throw new Error(error.message);
+      }
+    }
 
     // Send Email in background (non-blocking)
     sendMemberWelcomeEmail(email, fullName, { interestArea, message }).catch(err => {
-      console.error("Background welcome email sending error:", err);
+      console.error("[CONTROLLER] Background welcome email sending error:", err);
     });
     
-    res.json({ success: true });
+    res.json({ success: true, message: 'Membership application submitted successfully.' });
   } catch (error) {
+    console.error('[CONTROLLER] Exception in submitMembership:', error);
     next(error);
   }
 };
@@ -32,16 +47,25 @@ export const approveMembership = async (req, res, next) => {
 
     const details = memberDetails || { memberId, name, email, ...req.body };
 
-    // Trigger email send asynchronously
+    // Trigger email send asynchronously with full error tracking
     sendMemberActiveEmail(email, name || 'Valued Member', details)
-      .then(success => {
-        console.log(`[CONTROLLER] Member approval email result for ${email}: ${success ? 'DELIVERED' : 'FAILED'}`);
+      .then(emailResult => {
+        console.log(`[CONTROLLER] Member approval email result for ${email}:`, {
+          success: emailResult.success,
+          idCardAttachment: emailResult.idCardAttachment,
+          photoAttached: emailResult.photoAttached,
+          messageId: emailResult.messageId
+        });
       })
       .catch(err => {
         console.error("[CONTROLLER] Background member approval email error:", err);
       });
 
-    res.json({ success: true, message: 'Approval notification sent.' });
+    res.json({
+      success: true,
+      memberApproved: true,
+      message: 'Membership approval processed and notification dispatched.'
+    });
   } catch (error) {
     console.error('[CONTROLLER] Exception in approveMembership:', error);
     next(error);
@@ -56,10 +80,116 @@ export const sendWelcomeEmail = async (req, res, next) => {
     }
 
     sendMemberWelcomeEmail(email, name || 'Applicant', details || {}).catch(err => {
-      console.error("Background welcome email sending error:", err);
+      console.error("[CONTROLLER] Background welcome email sending error:", err);
     });
 
     res.json({ success: true, message: 'Welcome email triggered.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Direct file download endpoint for official Member ID Card PDF
+ * GET /api/members/:memberId/id-card/download
+ */
+export const downloadMemberIdCard = async (req, res, next) => {
+  try {
+    const { memberId } = req.params;
+    if (!memberId) {
+      return res.status(400).json({ error: 'Member ID parameter is required' });
+    }
+
+    console.log(`[DOWNLOAD] Requesting ID card PDF for memberId: "${memberId}"`);
+
+    // Lookup member in Supabase
+    let member = null;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(memberId);
+
+    if (isUuid) {
+      const { data, error } = await supabase
+        .from('members')
+        .select('*')
+        .eq('id', memberId)
+        .single();
+      if (!error && data) member = data;
+    } else {
+      const cleanId = memberId.replace(/^KCT-/i, '').toLowerCase();
+      const { data, error } = await supabase
+        .from('members')
+        .select('*');
+      if (!error && Array.isArray(data)) {
+        member = data.find(m => 
+          m.id === memberId || 
+          (m.id && String(m.id).toLowerCase().startsWith(cleanId)) ||
+          (m.memberId && m.memberId.toLowerCase() === memberId.toLowerCase())
+        );
+      }
+    }
+
+    if (!member) {
+      console.warn(`[DOWNLOAD] Member not found for identifier: ${memberId}`);
+      return res.status(404).json({ error: 'Member record not found.' });
+    }
+
+    // Generate the official PDF Buffer
+    const pdfBuffer = await generateMemberIdCardPdf(member);
+
+    const formattedMemberId = member.id 
+      ? `KCT-${String(member.id).slice(0, 8).toUpperCase()}` 
+      : (member.memberId || 'KCT-PASS');
+
+    const filename = `Kesula-Member-${formattedMemberId}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error('[DOWNLOAD] Error generating/downloading member ID card:', error);
+    next(error);
+  }
+};
+
+/**
+ * Preview endpoint for in-browser PDF viewing
+ * GET /api/members/:memberId/id-card/preview
+ */
+export const previewMemberIdCard = async (req, res, next) => {
+  try {
+    const { memberId } = req.params;
+    if (!memberId) {
+      return res.status(400).json({ error: 'Member ID parameter is required' });
+    }
+
+    let member = null;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(memberId);
+
+    if (isUuid) {
+      const { data, error } = await supabase.from('members').select('*').eq('id', memberId).single();
+      if (!error && data) member = data;
+    } else {
+      const cleanId = memberId.replace(/^KCT-/i, '').toLowerCase();
+      const { data, error } = await supabase.from('members').select('*');
+      if (!error && Array.isArray(data)) {
+        member = data.find(m => m.id === memberId || (m.id && String(m.id).toLowerCase().startsWith(cleanId)));
+      }
+    }
+
+    if (!member) {
+      return res.status(404).json({ error: 'Member record not found.' });
+    }
+
+    const pdfBuffer = await generateMemberIdCardPdf(member);
+    const formattedMemberId = member.id ? `KCT-${String(member.id).slice(0, 8).toUpperCase()}` : 'KCT-PASS';
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="Kesula-Member-${formattedMemberId}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    return res.send(pdfBuffer);
   } catch (error) {
     next(error);
   }

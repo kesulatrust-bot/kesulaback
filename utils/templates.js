@@ -91,113 +91,178 @@ export const memberActiveTemplate = (name, details = {}) => {
   const email = details.email || 'N/A';
   const phone = details.phone || details.phone_number || 'N/A';
   const interest = details.interestArea || details.interest_area || 'Community Volunteer';
-  const issuedDate = details.createdAt || details.created_at
-    ? new Date(details.createdAt || details.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  const rawDate = details.createdAt || details.created_at || details.submittedAt || details.submitted_at;
+  const issuedDate = rawDate
+    ? new Date(rawDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
     : new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  const photoUrl = details.photoUrl || details.photo_url || details.photo || details.avatar_url || details.avatar || '';
+  
+  // Backend direct download endpoint
+  const backendUrl = process.env.API_URL || process.env.VITE_API_URL || 'https://kesulaback-kg86.onrender.com';
+  const downloadUrl = `${backendUrl}/api/members/${encodeURIComponent(details.id || memberId)}/id-card/download`;
+  const verifyUrl = `https://www.kesulatrust.org/verify-member?id=${encodeURIComponent(memberId)}&name=${encodeURIComponent(name)}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(verifyUrl)}&color=8a3004`;
 
-  const baseUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'https://www.kesulatrust.org';
-  const downloadUrl = `${baseUrl}/contact?memberId=${encodeURIComponent(details.id || memberId)}`;
-
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(`https://www.kesulatrust.org/verify-member?id=${memberId}&name=${encodeURIComponent(name)}`)}&color=8a3004`;
+  // Photo resolution: prefer CID if attached, then public HTTPS URL
+  const photoSrc = details.hasPhotoAttachment ? 'cid:memberphoto' : (details.publicPhotoUrl || details.photoUrl || details.photo_url || '');
 
   return `
 <div style="${baseStyles}">
-  <div style="${containerStyles}">
-    <div style="${headerStyles}">
-      <img src="${LOGO_URL}" alt="Kesula Charitable Trust" style="max-height: 55px; border-radius: 9999px;" />
-      <h3 style="color: #8a3004; margin: 8px 0 0 0; font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Kesula Charitable Trust</h3>
-    </div>
-    <div style="${bodyStyles}">
-      <h2 style="color: #27ae60; margin-top: 0; font-size: 22px; text-align: center;">🎉 Membership Approved!</h2>
-      <p style="font-size: 15px;">Dear <strong>${name}</strong>,</p>
-      <p style="font-size: 14px; color: #475569;">We are thrilled to inform you that your membership application has been <strong>approved</strong>! You are now an official verified member of <strong>Kesula Charitable Trust</strong>.</p>
-      
-      <p style="font-size: 14px; font-weight: bold; color: #1e293b; margin-top: 20px; text-align: center; text-transform: uppercase; letter-spacing: 0.5px;">🪪 Your Official Verified Digital Membership Card:</p>
-      
-      <!-- Visual ID Card Container -->
-      <div style="max-width: 330px; margin: 15px auto; border-radius: 20px; background: linear-gradient(to bottom, #fff7ed, #ffffff, #fef3c7); border: 2px solid #fde68a; box-shadow: 0 10px 25px rgba(0,0,0,0.12); overflow: hidden; font-family: sans-serif; text-align: center;">
-        
-        <!-- ID Card Header -->
-        <div style="background-color: #8a3004; padding: 12px 16px; color: white; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #fcd34d;">
-          <div style="text-align: left;">
-            <div style="font-weight: 900; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #fcd34d;">KESULA TRUST</div>
-            <div style="font-size: 8px; color: #fef3c7; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600;">Official Member Identity Pass</div>
-          </div>
-          <span style="font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; padding: 3px 10px; border-radius: 20px; background-color: rgba(251,191,36,0.25); color: #fde68a; border: 1px solid rgba(251,191,36,0.4);">VERIFIED</span>
-        </div>
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f1f5f9; padding: 20px 10px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.06);">
+          
+          <!-- Header -->
+          <tr>
+            <td align="center" style="background-color: #fffaf0; padding: 24px 20px; border-bottom: 2px solid #fde68a;">
+              <img src="${LOGO_URL}" alt="Kesula Charitable Trust" width="55" height="55" style="width: 55px; height: 55px; border-radius: 9999px; display: block; margin: 0 auto 10px auto;" />
+              <h1 style="color: #8a3004; margin: 0; font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">Kesula Charitable Trust</h1>
+              <p style="color: #b45309; margin: 4px 0 0 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em;">Official Member Onboarding</p>
+            </td>
+          </tr>
 
-        <!-- ID Card Content Body -->
-        <div style="padding: 18px 16px;">
-          <!-- Member Avatar / Photo -->
-          <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="width: 100px; height: 125px; margin: 0 auto 10px; padding: 4px; background: linear-gradient(to top right, #fbbf24, #8a3004, #fde68a); border-radius: 16px;">
-            <tr>
-              <td align="center" valign="middle" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; width: 100px; height: 125px;">
-                ${photoUrl 
-                  ? `<img src="${photoUrl}" alt="${name}" width="100" height="125" style="width: 100px; height: 125px; object-fit: cover; display: block; border-radius: 12px;" />` 
-                  : `<div style="font-size: 44px; line-height: 125px; color: #8a3004; text-align: center;">👤</div>`}
-              </td>
-            </tr>
-          </table>
+          <!-- Body Content -->
+          <tr>
+            <td style="padding: 30px 24px;">
+              <div style="text-align: center; margin-bottom: 24px;">
+                <span style="display: inline-block; background-color: #ecfdf5; color: #047857; font-size: 12px; font-weight: 800; padding: 6px 16px; border-radius: 9999px; border: 1px solid #a7f3d0; text-transform: uppercase; letter-spacing: 0.05em;">
+                  🎉 Membership Approved
+                </span>
+                <h2 style="color: #0f172a; margin: 14px 0 6px 0; font-size: 22px; font-weight: 800;">Welcome to the Family, ${name}!</h2>
+                <p style="color: #475569; font-size: 14px; line-height: 1.6; margin: 0;">
+                  We are delighted to confirm that your membership application has been officially verified and approved. Your official verified identity pass is ready.
+                </p>
+              </div>
 
-          <div style="margin-bottom: 12px;">
-            <h3 style="font-size: 18px; font-weight: 900; color: #0f172a; margin: 0; text-transform: uppercase;">${name}</h3>
-            <div style="display: inline-block; margin-top: 4px; padding: 3px 14px; border-radius: 20px; background: linear-gradient(to right, #4a1802, #8a3004, #4a1802); color: #fcd34d; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em;">
-              ${interest}
-            </div>
-          </div>
+              <!-- ID CARD PREVIEW (Email-Safe Table Layout) -->
+              <table role="presentation" align="center" width="310" border="0" cellspacing="0" cellpadding="0" style="max-width: 310px; width: 100%; margin: 20px auto; background-color: #fffdfa; border: 2px solid #fde68a; border-radius: 18px; overflow: hidden; box-shadow: 0 12px 24px rgba(138,48,4,0.12);">
+                
+                <!-- Card Header -->
+                <tr>
+                  <td style="background-color: #8a3004; padding: 12px 14px; border-bottom: 2px solid #fcd34d;">
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td align="left">
+                          <div style="font-size: 11px; font-weight: 900; color: #fcd34d; text-transform: uppercase; letter-spacing: 0.05em;">KESULA TRUST</div>
+                          <div style="font-size: 7.5px; color: #fef3c7; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600;">Member Identity Pass</div>
+                        </td>
+                        <td align="right">
+                          <span style="font-size: 7.5px; font-weight: 800; color: #ffffff; background-color: #059669; padding: 3px 8px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid #6ee7b7;">VERIFIED</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
 
-          <!-- Details Table -->
-          <div style="background-color: #ffffff; border: 1px solid #fde68a; border-top: 4px solid #8a3004; border-radius: 12px; padding: 12px; text-align: left; font-size: 10px;">
-            <table style="width: 100%; border-collapse: collapse;">
-              <tr style="border-bottom: 1px solid #fef3c7;">
-                <td style="color: #64748b; font-weight: 800; font-size: 8px; text-transform: uppercase; padding: 5px 0;">MEMBER ID:</td>
-                <td style="text-align: right; font-weight: 900; color: #8a3004; font-family: monospace; font-size: 10px;">${memberId}</td>
-              </tr>
-              <tr style="border-bottom: 1px solid #fef3c7;">
-                <td style="color: #64748b; font-weight: 800; font-size: 8px; text-transform: uppercase; padding: 5px 0;">EMAIL:</td>
-                <td style="text-align: right; font-weight: 600; color: #1e293b; font-size: 9px;">${email}</td>
-              </tr>
-              <tr style="border-bottom: 1px solid #fef3c7;">
-                <td style="color: #64748b; font-weight: 800; font-size: 8px; text-transform: uppercase; padding: 5px 0;">PHONE:</td>
-                <td style="text-align: right; font-weight: 600; color: #1e293b; font-size: 9px;">${phone}</td>
-              </tr>
-              <tr>
-                <td style="color: #64748b; font-weight: 800; font-size: 8px; text-transform: uppercase; padding: 5px 0;">ISSUED ON:</td>
-                <td style="text-align: right; font-weight: 600; color: #1e293b; font-size: 9px;">${issuedDate}</td>
-              </tr>
-            </table>
-          </div>
+                <!-- Card Body (Photo & Info) -->
+                <tr>
+                  <td align="center" style="padding: 16px 14px 10px 14px;">
+                    
+                    <!-- Member Photo Frame -->
+                    <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin: 0 auto 10px auto;">
+                      <tr>
+                        <td align="center" valign="middle" style="width: 90px; height: 115px; background-color: #fff7ed; border: 2px solid #8a3004; border-radius: 12px; overflow: hidden; padding: 2px;">
+                          ${photoSrc 
+                            ? `<img src="${photoSrc}" alt="${name}" width="90" height="115" style="width: 90px; height: 115px; object-fit: cover; display: block; border-radius: 8px;" />` 
+                            : `<div style="font-size: 38px; line-height: 115px; color: #8a3004; text-align: center;">👤</div>`}
+                        </td>
+                      </tr>
+                    </table>
 
-          <!-- QR Verification Box -->
-          <div style="margin-top: 14px; background-color: #fff7ed; border: 1px solid #fde68a; border-radius: 12px; padding: 10px; text-align: center;">
-            <img src="${qrUrl}" alt="Scan QR Code to Verify" style="width: 90px; height: 90px; margin: 0 auto; display: block; border-radius: 6px;" />
-            <div style="font-size: 8px; font-weight: 800; color: #8a3004; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.05em;">Scan to Verify Membership</div>
-          </div>
-        </div>
+                    <h3 style="font-size: 16px; font-weight: 900; color: #0f172a; margin: 0 0 4px 0; text-transform: uppercase;">${name}</h3>
+                    <div style="display: inline-block; padding: 3px 12px; border-radius: 9999px; background-color: #8a3004; color: #fcd34d; font-size: 8.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">
+                      ${interest}
+                    </div>
 
-        <!-- ID Card Footer -->
-        <div style="background-color: #8a3004; color: #fde68a; padding: 8px 12px; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">
-          Official Volunteer Identity Pass • Non-Transferable
-        </div>
-      </div>
+                    <!-- Details Table inside card -->
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border: 1px solid #fde68a; border-top: 3px solid #8a3004; border-radius: 10px; padding: 8px 10px; font-size: 9px;">
+                      <tr>
+                        <td style="color: #64748b; font-weight: 800; font-size: 8px; text-transform: uppercase; padding: 4px 0; border-bottom: 1px solid #fef3c7;">MEMBER ID:</td>
+                        <td style="text-align: right; font-weight: 900; color: #8a3004; font-family: monospace; font-size: 9.5px; padding: 4px 0; border-bottom: 1px solid #fef3c7;">${memberId}</td>
+                      </tr>
+                      <tr>
+                        <td style="color: #64748b; font-weight: 800; font-size: 8px; text-transform: uppercase; padding: 4px 0; border-bottom: 1px solid #fef3c7;">EMAIL:</td>
+                        <td style="text-align: right; font-weight: 600; color: #1e293b; font-size: 8.5px; padding: 4px 0; border-bottom: 1px solid #fef3c7;">${email}</td>
+                      </tr>
+                      <tr>
+                        <td style="color: #64748b; font-weight: 800; font-size: 8px; text-transform: uppercase; padding: 4px 0; border-bottom: 1px solid #fef3c7;">PHONE:</td>
+                        <td style="text-align: right; font-weight: 600; color: #1e293b; font-size: 8.5px; padding: 4px 0; border-bottom: 1px solid #fef3c7;">${phone}</td>
+                      </tr>
+                      <tr>
+                        <td style="color: #64748b; font-weight: 800; font-size: 8px; text-transform: uppercase; padding: 4px 0;">ISSUED ON:</td>
+                        <td style="text-align: right; font-weight: 600; color: #1e293b; font-size: 8.5px; padding: 4px 0;">${issuedDate}</td>
+                      </tr>
+                    </table>
 
-      <!-- Download / Print ID Card Action Button -->
-      <div style="text-align: center; margin-top: 22px; margin-bottom: 12px;">
-        <a href="${downloadUrl}" target="_blank" style="display: inline-block; padding: 14px 28px; background-color: #8a3004; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; border-radius: 12px; box-shadow: 0 4px 12px rgba(138,48,4,0.3);">
-          🖨️ Download / Print Official Digital ID Card
-        </a>
-      </div>
+                    <!-- QR Code Box -->
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top: 10px; background-color: #fff7ed; border: 1px solid #fde68a; border-radius: 10px; padding: 8px;">
+                      <tr>
+                        <td align="center">
+                          <img src="${qrUrl}" alt="Scan QR Code to Verify" width="80" height="80" style="width: 80px; height: 80px; display: block; border-radius: 6px;" />
+                          <div style="font-size: 7.5px; font-weight: 800; color: #8a3004; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.05em;">Scan with Phone to Verify Membership</div>
+                        </td>
+                      </tr>
+                    </table>
 
-      <p style="font-size: 13px; color: #64748b; text-align: center; margin-top: 15px;">Welcome aboard to our mission of empowering communities!</p>
-      <p style="font-size: 14px; color: #1e293b;">Warm regards,<br/><strong>Kesula Charitable Trust Team</strong></p>
-    </div>
-    <div style="${footerStyles}">
-      <p>&copy; ${new Date().getFullYear()} Kesula Charitable Trust. All rights reserved.</p>
-    </div>
-  </div>
+                  </td>
+                </tr>
+
+                <!-- Card Footer -->
+                <tr>
+                  <td align="center" style="background-color: #8a3004; color: #fde68a; padding: 7px 10px; font-size: 7.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">
+                    Official Volunteer Identity Pass • Non-Transferable
+                  </td>
+                </tr>
+              </table>
+
+              <!-- DOWNLOAD CALL TO ACTION -->
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 28px 0 16px 0;">
+                <tr>
+                  <td align="center">
+                    <table role="presentation" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td align="center" style="border-radius: 12px; background-color: #8a3004; box-shadow: 0 4px 14px rgba(138,48,4,0.35);">
+                          <a href="${downloadUrl}" target="_blank" style="display: inline-block; padding: 15px 30px; font-family: 'Inter', Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 800; color: #ffffff; text-decoration: none; text-transform: uppercase; letter-spacing: 0.08em; border-radius: 12px;">
+                            📥 DOWNLOAD OFFICIAL ID CARD (PDF)
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Attachment & Verification Help Notice -->
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin: 15px 0;">
+                <tr>
+                  <td style="font-size: 12px; color: #475569; line-height: 1.5;">
+                    📎 <strong>Attachment Included:</strong> Your official print-ready ID card is also attached to this email as a PDF (<code>Kesula-Member-${memberId}.pdf</code>).<br/>
+                    🔍 <strong>Live Verification:</strong> Anyone can verify your active volunteer status anytime at <a href="${verifyUrl}" target="_blank" style="color: #8a3004; font-weight: 700; text-decoration: underline;">kesulatrust.org/verify-member</a>.
+                  </td>
+                </tr>
+              </table>
+
+              <p style="font-size: 14px; color: #1e293b; margin-top: 25px; line-height: 1.5;">
+                Warm regards,<br/>
+                <strong>Kesula Charitable Trust Team</strong>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="background-color: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0;">
+              <p style="margin: 0 0 4px 0;">&copy; ${new Date().getFullYear()} Kesula Charitable Trust. All rights reserved.</p>
+              <p style="margin: 0; font-size: 11px; color: #94a3b8;">Boduppal / Chengicherla, Telangana, India • www.kesulatrust.org</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
 </div>
-  `;
+`;
 };
 
 export const enquiryReceivedTemplate = (name) => `
