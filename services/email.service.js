@@ -59,11 +59,17 @@ const getValidLogoPath = () => {
 };
 
 // --------------------------------------------------
+// ENV CONFIG
+// --------------------------------------------------
+
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+
+// --------------------------------------------------
 // SMTP CONFIG
 // --------------------------------------------------
 
 const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-const smtpPort = Number(process.env.SMTP_PORT);
+const smtpPort = Number(process.env.SMTP_PORT) || 587;
 
 const smtpUser = process.env.SMTP_USER || 'kesulatrust@gmail.com';
 
@@ -76,15 +82,9 @@ const mailFrom =
   process.env.MAIL_FROM_ADDRESS ||
   smtpUser;
 
-if (!smtpPort) {
-  throw new Error(
-    '❌ SMTP_PORT is not configured. Set SMTP_PORT=587 in Render.'
-  );
-}
-
 if (!smtpPass) {
-  throw new Error(
-    '❌ SMTP_PASS is not configured.'
+  console.warn(
+    '⚠️ [SMTP WARNING] SMTP_PASS is not configured in .env.'
   );
 }
 
