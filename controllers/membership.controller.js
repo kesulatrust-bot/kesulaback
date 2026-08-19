@@ -24,9 +24,34 @@ export const submitMembership = async (req, res, next) => {
       return res.status(409).json({ error: 'A membership application has already been submitted with this phone number.' });
     }
     
+    // Ensure photo_url is a clean storage bucket URL, never raw base64
+    let finalPublicPhotoUrl = '';
+    if (finalPhoto && finalPhoto.startsWith('http')) {
+      finalPublicPhotoUrl = finalPhoto;
+    } else if (finalPhoto && finalPhoto.startsWith('data:image/')) {
+      try {
+        const matches = finalPhoto.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          const mimeType = matches[1];
+          const buffer = Buffer.from(matches[2], 'base64');
+          const ext = mimeType.includes('webp') ? 'webp' : 'png';
+          const filePath = `members/${Date.now()}-${Math.floor(Math.random() * 10000)}.${ext}`;
+          const { error: upErr } = await supabase.storage
+            .from('images')
+            .upload(filePath, buffer, { contentType: mimeType, upsert: false });
+          if (!upErr) {
+            const { data: pData } = supabase.storage.from('images').getPublicUrl(filePath);
+            finalPublicPhotoUrl = pData?.publicUrl || '';
+          }
+        }
+      } catch (e) {
+        console.warn('[CONTROLLER] Could not save base64 to storage bucket:', e.message);
+      }
+    }
+
     // Insert into Supabase
     const payload = { fullName, email: cleanEmail, phone: cleanPhone, address, interestArea, message, status: 'pending' };
-    if (finalPhoto) payload.photo_url = finalPhoto;
+    if (finalPublicPhotoUrl) payload.photo_url = finalPublicPhotoUrl;
 
     let { data, error } = await supabase.from('members').insert([payload]).select();
     if (error) {
