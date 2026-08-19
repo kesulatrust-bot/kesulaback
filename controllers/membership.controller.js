@@ -6,29 +6,52 @@ export const submitMembership = async (req, res, next) => {
   try {
     const { fullName, email, phone, address, interestArea, message, photoUrl, photo_url } = req.body;
     const finalPhoto = photoUrl || photo_url || '';
+    const cleanPhone = String(phone || '').trim();
+    const cleanEmail = String(email || '').trim().toLowerCase();
+
+    if (!cleanEmail || !cleanPhone || !fullName) {
+      return res.status(400).json({ error: 'Full name, email, and phone number are required.' });
+    }
+
+    // Check for existing phone number
+    const { data: existingPhone } = await supabase
+      .from('members')
+      .select('id')
+      .eq('phone', cleanPhone)
+      .limit(1);
+
+    if (existingPhone && existingPhone.length > 0) {
+      return res.status(409).json({ error: 'A membership application has already been submitted with this phone number.' });
+    }
     
     // Insert into Supabase
-    const payload = { fullName, email, phone, address, interestArea, message, status: 'pending' };
+    const payload = { fullName, email: cleanEmail, phone: cleanPhone, address, interestArea, message, status: 'pending' };
     if (finalPhoto) payload.photo_url = finalPhoto;
 
-    const { data, error } = await supabase.from('members').insert([payload]).select();
+    let { data, error } = await supabase.from('members').insert([payload]).select();
     if (error) {
       // Fallback if photo_url column does not exist
       if (error.message && (error.message.includes('photo_url') || error.message.includes('photoUrl'))) {
         delete payload.photo_url;
         const retry = await supabase.from('members').insert([payload]).select();
         if (retry.error) throw new Error(retry.error.message);
+        data = retry.data;
       } else {
         throw new Error(error.message);
       }
     }
 
     // Send Email in background (non-blocking)
-    sendMemberWelcomeEmail(email, fullName, { interestArea, message }).catch(err => {
+    sendMemberWelcomeEmail(cleanEmail, fullName, { interestArea, message, phone: cleanPhone, address }).catch(err => {
       console.error("[CONTROLLER] Background welcome email sending error:", err);
     });
     
-    res.json({ success: true, message: 'Membership application submitted successfully.' });
+    const memberRecord = (data && data.length > 0) ? data[0] : payload;
+    res.json({
+      success: true,
+      message: 'Membership application submitted successfully.',
+      member: memberRecord
+    });
   } catch (error) {
     console.error('[CONTROLLER] Exception in submitMembership:', error);
     next(error);

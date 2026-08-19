@@ -36,9 +36,22 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ limit: '1mb', extended: true }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// Universal CORS Setup
+// Explicit Production CORS Setup
+const allowedOrigins = [
+  'https://kesulatrust.org',
+  'https://www.kesulatrust.org',
+  'http://localhost:5173',
+  'http://localhost:3000'
+];
+
 app.use(cors({
-  origin: true,
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1 || (typeof origin === 'string' && origin.endsWith('.onrender.com'))) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -47,9 +60,10 @@ app.use(cors({
 // Apply global rate limiter
 app.use('/api/', generalApiLimiter);
 
-// Health check & version
-app.get('/api/ping', (req, res) => res.status(200).json({ status: 'awake' }));
-app.get('/api/version', (req, res) => res.status(200).json({ version: '2.0.0', commit: 'id-card-download', timestamp: new Date().toISOString() }));
+// Health check & version endpoints
+app.get('/api/ping', (req, res) => res.status(200).json({ status: 'awake', service: 'kesula-backend' }));
+app.get('/ping', (req, res) => res.status(200).json({ status: 'awake', service: 'kesula-backend' }));
+app.get('/api/version', (req, res) => res.status(200).json({ version: '2.1.0', commit: 'prod-architecture-v2', timestamp: new Date().toISOString() }));
 
 // Mount Routes
 app.use('/api', paymentRoutes);
