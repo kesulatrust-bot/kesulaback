@@ -36,26 +36,14 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ limit: '1mb', extended: true }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// Explicit Production CORS Setup
-const allowedOrigins = [
-  'https://kesulatrust.org',
-  'https://www.kesulatrust.org',
-  'http://localhost:5173',
-  'http://localhost:3000'
-];
-
+// Resilient Universal CORS Setup
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1 || (typeof origin === 'string' && origin.endsWith('.onrender.com'))) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+app.options('*', cors());
 
 // Apply global rate limiter
 app.use('/api/', generalApiLimiter);
