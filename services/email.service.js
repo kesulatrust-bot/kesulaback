@@ -106,37 +106,36 @@ console.log('[SMTP CONFIG]', {
 // REUSABLE RESILIENT SMTP TRANSPORTERS (DUAL POOL)
 // --------------------------------------------------
 
-// Primary: Direct SSL on Port 465 with IPv4 forcing (fastest & most reliable on Render/Cloud)
+// Primary: Gmail Service preset (automatically handles Google cloud routing & TLS)
 const primaryTransporter = nodemailer.createTransport({
-  host: smtpHost,
-  port: 465,
-  secure: true,
-  family: 4,
+  service: 'gmail',
   auth: {
     user: smtpUser,
     pass: smtpPass
   },
-  connectionTimeout: 30000,
-  greetingTimeout: 30000,
-  socketTimeout: 45000,
-  pool: true,
-  maxConnections: 3,
-  maxMessages: 50
+  tls: {
+    rejectUnauthorized: false
+  },
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+  socketTimeout: 20000
 });
 
-// Fallback: STARTTLS on Port 587 with IPv4 forcing
+// Fallback: Explicit Port 587 STARTTLS with TLS tolerance
 const fallbackTransporter = nodemailer.createTransport({
-  host: smtpHost,
+  host: smtpHost || 'smtp.gmail.com',
   port: 587,
   secure: false,
-  family: 4,
   auth: {
     user: smtpUser,
     pass: smtpPass
   },
-  connectionTimeout: 30000,
-  greetingTimeout: 30000,
-  socketTimeout: 45000
+  tls: {
+    rejectUnauthorized: false
+  },
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+  socketTimeout: 20000
 });
 
 // --------------------------------------------------
