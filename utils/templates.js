@@ -266,7 +266,7 @@ export const memberActiveTemplate = (name, details = {}) => {
     : new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   
   // Backend direct download endpoint
-  const backendUrl = process.env.API_URL || process.env.VITE_API_URL || 'https://kesulaback-kg86.onrender.com';
+  const backendUrl = process.env.API_URL || process.env.VITE_API_URL || 'https://kesulaback-nit5.onrender.com';
   const downloadUrl = `${backendUrl}/api/members/${encodeURIComponent(details.id || memberId)}/id-card/download`;
   const verifyUrl = `https://kesulatrust.org/verify-member?id=${encodeURIComponent(memberId)}&name=${encodeURIComponent(fullName)}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(verifyUrl)}&color=8a3004`;
