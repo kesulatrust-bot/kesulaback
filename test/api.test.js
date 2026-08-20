@@ -18,17 +18,14 @@ vi.mock('@supabase/supabase-js', () => {
   };
 });
 
-// Mock Nodemailer
-vi.mock('nodemailer', () => {
+// Mock Resend Email Service
+vi.mock('../services/email.service.js', () => {
   return {
-    default: {
-      createTransport: vi.fn().mockReturnValue({
-        sendMail: vi.fn().mockResolvedValue(true)
-      })
-    },
-    createTransport: vi.fn().mockReturnValue({
-      sendMail: vi.fn().mockResolvedValue(true)
-    })
+    sendMail: vi.fn().mockResolvedValue({ success: true, accepted: true, messageId: 'test_msg_id', provider: 'resend' }),
+    sendMemberActiveEmail: vi.fn().mockResolvedValue({ success: true, accepted: true, messageId: 'test_msg_id', provider: 'resend' }),
+    sendMemberWelcomeEmail: vi.fn().mockResolvedValue({ success: true, accepted: true, messageId: 'test_msg_id', provider: 'resend' }),
+    sendPaymentSuccessEmail: vi.fn().mockResolvedValue({ success: true, accepted: true, messageId: 'test_msg_id', provider: 'resend' }),
+    sendEnquiryEmail: vi.fn().mockResolvedValue({ success: true, accepted: true, messageId: 'test_msg_id', provider: 'resend' })
   };
 });
 
@@ -36,7 +33,7 @@ describe('Backend API Tests', () => {
   it('GET /api/ping should return awake', async () => {
     const res = await request(app).get('/api/ping');
     expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ status: 'awake' });
+    expect(res.body).toEqual({ status: 'awake', service: 'kesula-backend' });
   });
 
   it('POST /api/submit-contact should return 400 for invalid data', async () => {

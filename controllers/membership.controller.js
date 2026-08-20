@@ -112,24 +112,25 @@ export const approveMembership = async (req, res, next) => {
     const memberName = details.fullName || details.name || name || 'Valued Member';
     const memberEmail = details.email || email;
 
-    // Trigger email send asynchronously with full error tracking
-    sendMemberActiveEmail(memberEmail, memberName, details)
-      .then(emailResult => {
-        console.log(`[CONTROLLER] Member approval email result for ${memberEmail}:`, {
-          success: emailResult.success,
-          idCardAttachment: emailResult.idCardAttachment,
-          photoAttached: emailResult.photoAttached,
-          messageId: emailResult.messageId
-        });
-      })
-      .catch(err => {
-        console.error("[CONTROLLER] Background member approval email error:", err);
-      });
+    // Dispatch email via Resend and record exact status
+    const emailResult = await sendMemberActiveEmail(memberEmail, memberName, details);
+    
+    console.log(`[CONTROLLER] Member approval email result for ${memberEmail}:`, {
+      success: emailResult.success,
+      idCardAttachment: emailResult.idCardAttachment,
+      messageId: emailResult.messageId || null,
+      error: emailResult.error || null
+    });
 
     res.json({
       success: true,
       memberApproved: true,
-      message: 'Membership approval processed and notification dispatched.'
+      emailSent: emailResult.success,
+      messageId: emailResult.messageId || null,
+      emailError: emailResult.error || null,
+      message: emailResult.success 
+        ? 'Membership approved and official ID Card email delivered successfully via Resend.' 
+        : `Membership approved in database, but email failed: ${emailResult.error || 'Provider error'}`
     });
   } catch (error) {
     console.error('[CONTROLLER] Exception in approveMembership:', error);
