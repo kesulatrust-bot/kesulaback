@@ -123,50 +123,102 @@ export const transporter = nodemailer.createTransport({
   socketTimeout: 35000
 });
 
+const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+const resendFrom = process.env.RESEND_FROM || 'Kesula Charitable Trust <onboarding@resend.dev>';
+
 // --------------------------------------------------
-// STARTUP SMTP & DNS DIAGNOSTICS
+// STARTUP EMAIL DIAGNOSTICS
 // --------------------------------------------------
 
 const runStartupDiagnostics = async () => {
+  if (resendApiKey) {
+    console.log('[EMAIL SERVICE] ✅ Resend HTTPS API configured & ready as primary email provider (Port 443).');
+    return;
+  }
+
   let resolvedIps = [];
   try {
     resolvedIps = await dns.promises.resolve4(smtpHost);
   } catch (dnsErr) {
-    console.warn('[SMTP DNS WARNING] Failed resolving IPv4 for host:', dnsErr.message);
+    // Silent
   }
 
-  console.log('[SMTP DIAGNOSTICS]', {
-    host: smtpHost,
-    port: smtpPort,
-    user: smtpUser,
-    passConfigured: Boolean(smtpPass),
-    mailFrom,
-    ipv4DnsResult: resolvedIps.length > 0 ? resolvedIps[0] : 'N/A',
-    dnsFamily: 4
-  });
-
-  try {
-    await transporter.verify();
-    console.log('[SMTP VERIFY SUCCESS] Transporter connection verified and ready.');
-  } catch (verifyError) {
-    console.error('[SMTP VERIFY FAILED]', {
-      code: verifyError.code,
-      command: verifyError.command,
-      responseCode: verifyError.responseCode,
-      message: verifyError.message
-    });
+  if (smtpPass) {
+    try {
+      await transporter.verify();
+      console.log('[SMTP VERIFY SUCCESS] Transporter connection verified and ready.');
+    } catch (verifyError) {
+      console.error('[SMTP VERIFY FAILED]', verifyError.message);
+    }
   }
 };
 
 runStartupDiagnostics();
 
 // --------------------------------------------------
-// SEND MAIL (WITH STRUCTURED [SMTP ACCEPTED] LOGGING)
+// SEND MAIL (HYBRID: RESEND HTTPS API + SMTP FALLBACK)
 // --------------------------------------------------
 
-export const sendMail = async (to, subject, html, customAttachments = []) => {
-  console.log(`[SMTP] Dispatching email to: "${to}" | Subject: "${subject}"`);
+const sendViaResendHttp = async (to, subject, html, customAttachments = []) => {
+  const formattedAttachments = customAttachments.map(att => {
+    let content = att.content;
+    if (Buffer.isBuffer(content)) {
+      content = content.toString('base64');
+    }
+    return {
+      filename: att.filename,
+      content: content
+    };
+  });
 
+  const payload = {
+    from: resendFrom,
+    to: [to],
+    subject: subject,
+    html: html
+  };
+
+  if (formattedAttachments.length > 0) {
+    payload.attachments = formattedAttachments;
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${resendApiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || JSON.stringify(data));
+  }
+
+  return {
+    success: true,
+    accepted: true,
+    messageId: data.id,
+    provider: 'resend_https'
+  };
+};
+
+export const sendMail = async (to, subject, html, customAttachments = []) => {
+  console.log(`[EMAIL SERVICE] Dispatching email to: "${to}" | Subject: "${subject}"`);
+
+  // 1. Try Resend HTTPS API if API Key is configured (Preferred on Render / Cloud)
+  if (resendApiKey) {
+    try {
+      const resendResult = await sendViaResendHttp(to, subject, html, customAttachments);
+      console.log('[RESEND HTTPS ACCEPTED]', { to, messageId: resendResult.messageId });
+      return resendResult;
+    } catch (resendError) {
+      console.error('[RESEND HTTPS FAILED, FALLING BACK TO SMTP]:', resendError.message);
+    }
+  }
+
+  // 2. Fallback to Direct SMTP
   const mailOptions = {
     from: `Kesula Charitable Trust <${mailFrom}>`,
     to,
