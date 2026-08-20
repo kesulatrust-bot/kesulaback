@@ -21,9 +21,6 @@ import debugRoutes from './routes/debug.routes.js';
 const requiredEnvVars = [
   'RAZORPAY_KEY_ID',
   'RAZORPAY_KEY_SECRET',
-  'SMTP_HOST',
-  'SMTP_USER',
-  'SMTP_PASS',
   'VITE_SUPABASE_URL',
   'VITE_SUPABASE_ANON_KEY'
 ];
