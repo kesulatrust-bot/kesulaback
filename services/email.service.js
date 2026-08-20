@@ -1,16 +1,15 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 import {
   paymentSuccessTemplate,
   memberWelcomeTemplate,
   memberActiveTemplate,
-  adminNotificationTemplate
+  adminNotificationTemplate,
+  enquiryReceivedTemplate
 } from '../utils/templates.js';
 
-import { enquiryReceivedTemplate } from '../utils/templates-enquiry.js';
 import { generateMemberIdCardPdf, getImageBuffer } from './idCard.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,8 +22,8 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 // --------------------------------------------------
 
 const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
-const resendFrom = process.env.RESEND_FROM || 'Kesula Charitable Trust <contact@kesulatrust.org>';
-const adminNotificationRecipient = process.env.MAIL_FROM_ADDRESS || 'kesulatrust@gmail.com';
+const resendFrom = (process.env.RESEND_FROM || 'Kesula Charitable Trust <contact@kesulatrust.org>').trim();
+const adminNotificationRecipient = (process.env.ADMIN_EMAIL || process.env.ADMIN_NOTIFICATION_EMAIL || 'kesulatrust@gmail.com').trim();
 
 if (resendApiKey) {
   console.log('[RESEND SERVICE] ✅ Resend HTTPS API initialized (Port 443 REST). Sender:', resendFrom);
@@ -36,31 +35,31 @@ if (resendApiKey) {
 // CENTRALIZED RESEND DISPATCHER (HTTP REST via FETCH)
 // --------------------------------------------------
 
-export const sendMail = async (to, subject, html, customAttachments = []) => {
-  if (!to || !to.includes('@')) {
-    console.error(`[RESEND FAILED] Invalid recipient email: "${to}"`);
+export const sendMail = async (to, subject, html, customAttachments = [], emailType = 'general') => {
+  const cleanRecipient = String(to || '').trim();
+  
+  if (!cleanRecipient || !cleanRecipient.includes('@')) {
+    console.error(`[RESEND FAILED] type=${emailType} to="${cleanRecipient}" error="Invalid recipient address"`);
     return {
       success: false,
-      accepted: false,
-      error: `Invalid recipient address: "${to}"`,
-      provider: 'resend'
+      provider: 'resend',
+      error: `Invalid recipient address: "${cleanRecipient}"`
     };
   }
 
   const cleanApiKey = (process.env.RESEND_API_KEY || resendApiKey || '').trim();
   if (!cleanApiKey) {
-    console.error('[RESEND FAILED] Missing RESEND_API_KEY environment variable on server.');
+    console.error(`[RESEND FAILED] type=${emailType} to="${cleanRecipient}" error="Missing RESEND_API_KEY environment variable"`);
     return {
       success: false,
-      accepted: false,
-      error: 'RESEND_API_KEY not configured on server',
-      provider: 'resend'
+      provider: 'resend',
+      error: 'RESEND_API_KEY not configured on server'
     };
   }
 
-  console.log(`[RESEND] Sending email to: "${to}" | Subject: "${subject}"`);
+  console.log(`[RESEND] Sending email... type=${emailType} to="${cleanRecipient}" | subject="${subject}"`);
 
-  // Format attachments for Resend REST API
+  // Format attachments for Resend REST API (Base64 encoding)
   const formattedAttachments = (customAttachments || []).map(att => {
     let content = att.content;
     if (Buffer.isBuffer(content)) {
@@ -74,7 +73,7 @@ export const sendMail = async (to, subject, html, customAttachments = []) => {
 
   const payload = {
     from: resendFrom,
-    to: [to.trim()],
+    to: [cleanRecipient],
     subject: subject,
     html: html
   };
@@ -103,31 +102,29 @@ export const sendMail = async (to, subject, html, customAttachments = []) => {
 
     if (!response.ok) {
       const errorMsg = data.message || `Resend API returned status ${response.status}`;
-      console.error(`[RESEND FAILED] Error dispatching to "${to}":`, errorMsg);
+      console.error(`[RESEND FAILED] type=${emailType} to="${cleanRecipient}" error="${errorMsg}" status=${response.status}`);
       return {
         success: false,
-        accepted: false,
+        provider: 'resend',
         error: errorMsg,
-        status: response.status,
-        provider: 'resend'
+        status: response.status
       };
     }
 
-    console.log(`[RESEND ACCEPTED] to: "${to}" | messageId: "${data.id}"`);
+    const messageId = data.id || 'N/A';
+    console.log(`[RESEND ACCEPTED] type=${emailType} to="${cleanRecipient}" messageId="${messageId}"`);
     return {
       success: true,
-      accepted: true,
-      messageId: data.id,
-      provider: 'resend'
+      provider: 'resend',
+      messageId: messageId
     };
   } catch (err) {
     const errorMsg = err.name === 'AbortError' ? 'Resend request timed out after 18s' : err.message;
-    console.error(`[RESEND FAILED] Network exception for "${to}":`, errorMsg);
+    console.error(`[RESEND FAILED] type=${emailType} to="${cleanRecipient}" error="${errorMsg}"`);
     return {
       success: false,
-      accepted: false,
-      error: errorMsg,
-      provider: 'resend'
+      provider: 'resend',
+      error: errorMsg
     };
   }
 };
@@ -195,15 +192,15 @@ export const sendMemberActiveEmail = async (email, name, details = {}) => {
     email,
     'Welcome to Kesula Charitable Trust - Official Member ID Card Included',
     html,
-    customAttachments
+    customAttachments,
+    'member-approval'
   );
 
   return {
-    success: result.accepted,
-    status: result.accepted ? 'SUCCESS' : 'FAILED',
+    success: result.success,
+    provider: 'resend',
     messageId: result.messageId || null,
     error: result.error || null,
-    provider: 'resend',
     idCardAttachment: Boolean(pdfBuffer),
     photoAttached: Boolean(photoBuffer)
   };
@@ -219,7 +216,9 @@ export const sendMemberWelcomeEmail = async (email, name, details = {}) => {
   const memberResult = await sendMail(
     email,
     'Membership Application Received - Kesula Charitable Trust',
-    html
+    html,
+    [],
+    'member-welcome'
   );
 
   const adminHtml = adminNotificationTemplate(
@@ -231,12 +230,16 @@ export const sendMemberWelcomeEmail = async (email, name, details = {}) => {
   const adminResult = await sendMail(
     adminNotificationRecipient,
     'New Membership Application Received',
-    adminHtml
+    adminHtml,
+    [],
+    'admin-membership'
   );
 
   return {
-    success: memberResult.accepted,
-    status: (memberResult.accepted && adminResult.accepted) ? 'SUCCESS' : (memberResult.accepted ? 'MEMBER_ONLY' : 'FAILED'),
+    success: memberResult.success,
+    provider: 'resend',
+    messageId: memberResult.messageId || null,
+    error: memberResult.error || null,
     memberEmail: memberResult,
     adminEmail: adminResult
   };
@@ -252,7 +255,9 @@ export const sendPaymentSuccessEmail = async (email, name, amount, details = {})
   const donorResult = await sendMail(
     email,
     'Thank You for Your Donation - Kesula Charitable Trust',
-    html
+    html,
+    [],
+    'donor-receipt'
   );
 
   const adminHtml = adminNotificationTemplate(
@@ -263,12 +268,16 @@ export const sendPaymentSuccessEmail = async (email, name, amount, details = {})
   const adminResult = await sendMail(
     adminNotificationRecipient,
     'New Donation Contribution Received',
-    adminHtml
+    adminHtml,
+    [],
+    'admin-donation'
   );
 
   return {
-    success: donorResult.accepted,
-    status: (donorResult.accepted && adminResult.accepted) ? 'SUCCESS' : (donorResult.accepted ? 'DONOR_ONLY' : 'FAILED'),
+    success: donorResult.success,
+    provider: 'resend',
+    messageId: donorResult.messageId || null,
+    error: donorResult.error || null,
     donorEmail: donorResult,
     adminEmail: adminResult
   };
@@ -284,7 +293,9 @@ export const sendEnquiryEmail = async (email, name, details = {}) => {
   const userResult = await sendMail(
     email,
     'Enquiry Received - Kesula Charitable Trust',
-    html
+    html,
+    [],
+    'user-enquiry'
   );
 
   const adminHtml = adminNotificationTemplate(
@@ -296,12 +307,16 @@ export const sendEnquiryEmail = async (email, name, details = {}) => {
   const adminResult = await sendMail(
     adminNotificationRecipient,
     'New General Enquiry Received',
-    adminHtml
+    adminHtml,
+    [],
+    'admin-enquiry'
   );
 
   return {
-    success: userResult.accepted,
-    status: (userResult.accepted && adminResult.accepted) ? 'SUCCESS' : (userResult.accepted ? 'USER_ONLY' : 'FAILED'),
+    success: userResult.success,
+    provider: 'resend',
+    messageId: userResult.messageId || null,
+    error: userResult.error || null,
     userEmail: userResult,
     adminEmail: adminResult
   };

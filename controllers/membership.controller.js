@@ -145,11 +145,15 @@ export const sendWelcomeEmail = async (req, res, next) => {
       return res.status(400).json({ error: 'Email is required' });
     }
 
-    sendMemberWelcomeEmail(email, name || 'Applicant', details || {}).catch(err => {
-      console.error("[CONTROLLER] Background welcome email sending error:", err);
-    });
+    const emailResult = await sendMemberWelcomeEmail(email, name || 'Applicant', details || {});
 
-    res.json({ success: true, message: 'Welcome email triggered.' });
+    res.json({
+      success: emailResult.success,
+      provider: 'resend',
+      messageId: emailResult.messageId || null,
+      error: emailResult.error || null,
+      message: emailResult.success ? 'Welcome email dispatched via Resend.' : `Welcome email failed: ${emailResult.error}`
+    });
   } catch (error) {
     next(error);
   }
