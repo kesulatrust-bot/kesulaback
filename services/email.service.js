@@ -205,16 +205,22 @@ const sendViaResendHttp = async (to, subject, html, customAttachments = []) => {
 };
 
 export const sendMail = async (to, subject, html, customAttachments = []) => {
-  console.log(`[EMAIL SERVICE] Dispatching email to: "${to}" | Subject: "${subject}"`);
+  console.log(`[RESEND] Sending email to: "${to}" | Subject: "${subject}"`);
 
-  // 1. Try Resend HTTPS API if API Key is configured (Preferred on Render / Cloud)
+  // 1. Primary: Resend HTTPS API (Port 443 REST)
   if (resendApiKey) {
     try {
       const resendResult = await sendViaResendHttp(to, subject, html, customAttachments);
-      console.log('[RESEND HTTPS ACCEPTED]', { to, messageId: resendResult.messageId });
+      console.log('[RESEND ACCEPTED]', { to, messageId: resendResult.messageId });
       return resendResult;
     } catch (resendError) {
-      console.error('[RESEND HTTPS FAILED, FALLING BACK TO SMTP]:', resendError.message);
+      console.error('[RESEND FAILED]', { to, error: resendError.message });
+      return {
+        success: false,
+        accepted: false,
+        error: resendError.message,
+        provider: 'resend_https'
+      };
     }
   }
 
