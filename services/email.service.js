@@ -85,41 +85,43 @@ const smtpPass = rawPass.replace(/\s+/g, '').replace(/^"|"$/g, '');
 const mailFrom = process.env.MAIL_FROM_ADDRESS || smtpUser;
 
 // --------------------------------------------------
-// REUSABLE RESILIENT SMTP TRANSPORTER (SINGLE POOL)
+// REUSABLE RESILIENT SMTP TRANSPORTER (STRICT IPv4 FOR RENDER)
 // --------------------------------------------------
 
-const isGmail = smtpHost.includes('gmail') || smtpUser.includes('@gmail.com');
+// Custom DNS lookup that strictly returns IPv4 address only (never IPv6)
+const ipv4Lookup = (hostname, options, callback) => {
+  dns.lookup(hostname, { family: 4, all: false }, (err, address) => {
+    if (err) {
+      // Fallback to direct resolve4 if lookup fails
+      dns.resolve4(hostname, (rErr, addresses) => {
+        if (rErr || !addresses || addresses.length === 0) return callback(err || rErr);
+        callback(null, addresses[0], 4);
+      });
+      return;
+    }
+    callback(null, address, 4);
+  });
+};
 
-export const transporter = isGmail
-  ? nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: smtpUser,
-        pass: smtpPass
-      },
-      pool: true,
-      maxConnections: 3,
-      maxMessages: 100,
-      connectionTimeout: 20000,
-      greetingTimeout: 15000,
-      socketTimeout: 30000
-    })
-  : nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
-      family: 4,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass
-      },
-      pool: true,
-      maxConnections: 3,
-      maxMessages: 100,
-      connectionTimeout: 20000,
-      greetingTimeout: 15000,
-      socketTimeout: 30000
-    });
+export const transporter = nodemailer.createTransport({
+  host: smtpHost.includes('gmail') ? 'smtp.gmail.com' : smtpHost,
+  port: 465,
+  secure: true,
+  family: 4,
+  dnsLookup: ipv4Lookup,
+  auth: {
+    user: smtpUser,
+    pass: smtpPass
+  },
+  tls: {
+    rejectUnauthorized: false,
+    minVersion: 'TLSv1.2'
+  },
+  pool: false, // Fresh IPv4 connection prevents dead socket timeouts on cloud containers
+  connectionTimeout: 25000,
+  greetingTimeout: 15000,
+  socketTimeout: 35000
+});
 
 // --------------------------------------------------
 // STARTUP SMTP & DNS DIAGNOSTICS
