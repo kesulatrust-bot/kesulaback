@@ -88,22 +88,38 @@ const mailFrom = process.env.MAIL_FROM_ADDRESS || smtpUser;
 // REUSABLE RESILIENT SMTP TRANSPORTER (SINGLE POOL)
 // --------------------------------------------------
 
-export const transporter = nodemailer.createTransport({
-  host: smtpHost,
-  port: smtpPort,
-  secure: smtpPort === 465,
-  family: 4, // Strictly force IPv4 to eliminate Render IPv6 ENETUNREACH
-  auth: {
-    user: smtpUser,
-    pass: smtpPass
-  },
-  pool: true,
-  maxConnections: 3,
-  maxMessages: 100,
-  connectionTimeout: 15000,
-  greetingTimeout: 10000,
-  socketTimeout: 30000
-});
+const isGmail = smtpHost.includes('gmail') || smtpUser.includes('@gmail.com');
+
+export const transporter = isGmail
+  ? nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: smtpUser,
+        pass: smtpPass
+      },
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
+      connectionTimeout: 20000,
+      greetingTimeout: 15000,
+      socketTimeout: 30000
+    })
+  : nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      family: 4,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass
+      },
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
+      connectionTimeout: 20000,
+      greetingTimeout: 15000,
+      socketTimeout: 30000
+    });
 
 // --------------------------------------------------
 // STARTUP SMTP & DNS DIAGNOSTICS
