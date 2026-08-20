@@ -220,12 +220,14 @@ export const sendMail = async (to, subject, html, customAttachments = []) => {
 export const sendPaymentSuccessEmail = async (
   email,
   name,
-  amount
+  amount,
+  details = {}
 ) => {
 
   const html = paymentSuccessTemplate(
     name,
-    amount
+    amount,
+    details
   );
 
   const donorResult = await sendMail(
@@ -266,7 +268,7 @@ export const sendMemberWelcomeEmail = async (
   name,
   details = {}
 ) => {
-  const html = memberWelcomeTemplate(name);
+  const html = memberWelcomeTemplate(name, details);
 
   const memberResult = await sendMail(
     email,
