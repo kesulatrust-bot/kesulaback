@@ -124,7 +124,7 @@ export const transporter = nodemailer.createTransport({
 });
 
 const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
-const resendFrom = process.env.RESEND_FROM || 'Kesula Charitable Trust <onboarding@resend.dev>';
+const resendFrom = process.env.RESEND_FROM || 'Kesula Charitable Trust <contact@kesulatrust.org>';
 
 // --------------------------------------------------
 // STARTUP EMAIL DIAGNOSTICS
